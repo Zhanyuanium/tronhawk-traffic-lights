@@ -1,0 +1,34 @@
+{
+  "id": "com.tronhawk.traffic-lights",
+  "name": "Traffic Lights",
+  "version": "0.1.0",
+  "author": "TronHawk Contributors",
+  "tronhawk": "^0.1",
+  "entry": {
+    "css": "style.css",
+    "renderer": "src/renderer.js"
+  },
+  "permissions": ["renderer.css", "renderer.dom", "renderer.script"],
+  "config": {
+    "button-size": {
+      "type": "number",
+      "default": 12,
+      "label": "Traffic light button diameter (px)"
+    },
+    "traffic-gap": {
+      "type": "number",
+      "default": 8,
+      "label": "Gap between traffic light buttons (px)"
+    },
+    "left-offset": {
+      "type": "number",
+      "default": 12,
+      "label": "Left offset of the traffic light group (px)"
+    },
+    "decorative-fallback-lights": {
+      "type": "boolean",
+      "default": true,
+      "label": "Decorative fallback lights (decorative, not clickable)"
+    }
+  }
+}

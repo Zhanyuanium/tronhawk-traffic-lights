@@ -1,0 +1,380 @@
+/* ==========================================================================
+ * TronHawk plugin: Traffic Lights — style.css (static CSS data file)
+ * --------------------------------------------------------------------------
+ * Sandbox contract (must not violate):
+ * - This file is DATA. It is injected via webContents.insertCSS only and is
+ *   never executed as JS. No DOM/Node/Electron access from here.
+ * - The companion renderer (src/renderer.js, authored in src/renderer.ts)
+ *   runs in a QuickJS sandbox with
+ *   only ctx.css / ctx.dom / ctx.script / ctx.logger etc. No arbitrary page JS bridge,
+ *   no Electron private APIs, no Chromium internals, no target-app internals.
+ * - Strategy is "CSS move + repaint": keep the ORIGINAL buttons (and their
+ *   click behaviour) alive, only reposition them to the top-left and repaint
+ *   them as macOS traffic lights. Never `display: none` the functional
+ *   buttons themselves; hide only duplicate/decorative layers if needed.
+ * ========================================================================== */
+
+/* --------------------------------------------------------------------------
+ * 0. Tunables. The Manager settings form (manifest `config`) and/or user
+ *    stylesheets may override these variables. Keep the fallback values so
+ *    the file works standalone.
+ * -------------------------------------------------------------------------- */
+:root {
+  --th-traffic-size: 12px; /* maps to config `button-size` */
+  --th-traffic-gap: 8px; /* maps to config `traffic-gap` */
+  --th-traffic-left: 12px; /* maps to config `left-offset` */
+  --th-traffic-top: 12px;
+  --th-traffic-reserved: calc(
+    var(--th-traffic-left) + var(--th-traffic-size) * 3 +
+      var(--th-traffic-gap) * 2 + 12px
+  );
+}
+
+/* --------------------------------------------------------------------------
+ * 1. If the target app already renders native macOS traffic lights, do not
+ *    fight it. Leave the native group alone so we never render two groups.
+ * -------------------------------------------------------------------------- */
+.traffic-lights,
+.mac-traffic-lights,
+.macos-traffic-lights,
+.titlebar-traffic-lights {
+  visibility: visible !important;
+}
+
+/* --------------------------------------------------------------------------
+ * 2a. Generic Electron titlebar containers: relocate the control cluster
+ *     from top-right to top-left. We only touch layout (order/position),
+ *     never the click handlers.
+ * -------------------------------------------------------------------------- */
+.titlebar,
+.title-bar,
+[class*="titlebar" i],
+[class*="title-bar" i],
+[data-testid*="titlebar" i],
+[data-testid*="title-bar" i] {
+  -webkit-app-region: drag !important;
+}
+
+/* Known window-control clusters (generic + VS Code style). */
+.window-controls,
+.window-controls-container,
+.window-control,
+[class*="window-controls" i],
+[class*="windowControls" i] {
+  position: absolute !important;
+  left: var(--th-traffic-left) !important;
+  top: var(--th-traffic-top) !important;
+  right: auto !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: var(--th-traffic-gap) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  -webkit-app-region: no-drag !important;
+  z-index: 9999 !important;
+}
+
+/* VS Code specific: .titlebar > .window-controls-container sits on the right
+ * by default (justify-content: flex-end). Pin it to the left instead. */
+.titlebar > .window-controls-container,
+.titlebar > .window-controls,
+.vscode-titlebar > .window-controls-container {
+  order: -1 !important;
+  flex: 0 0 auto !important;
+}
+
+/* --------------------------------------------------------------------------
+ * 2b. App-specific coverage (class names observed in the wild). All rules
+ *     are defensive: unknown DOM simply does not match, nothing throws.
+ * -------------------------------------------------------------------------- */
+
+/* Discord (winButtons-*) — right-side cluster, Windows order. */
+[class*="winButtons" i],
+[class*="winButton" i] {
+  -webkit-app-region: no-drag !important;
+}
+div[class*="winButtons" i] {
+  position: absolute !important;
+  left: var(--th-traffic-left) !important;
+  top: var(--th-traffic-top) !important;
+  right: auto !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: var(--th-traffic-gap) !important;
+  background: transparent !important;
+}
+
+/* Slack (.p-titlebar__*, .sk-client-theme-*) */
+[class*="p-titlebar" i] {
+  -webkit-app-region: drag !important;
+}
+[class*="p-titlebar__controls" i],
+[class*="titlebar__controls" i] {
+  position: absolute !important;
+  left: var(--th-traffic-left) !important;
+  top: var(--th-traffic-top) !important;
+  right: auto !important;
+  display: flex !important;
+  gap: var(--th-traffic-gap) !important;
+  -webkit-app-region: no-drag !important;
+}
+
+/* Generic custom frameless controls on the right. Narrow exact matches only:
+ * substring matching on caption-buttons previously hit unrelated Obsidian
+ * elements and widened them, so keep this list exact. */
+.caption-buttons,
+.captionButtons,
+.frameless-controls,
+.header-controls {
+  position: absolute !important;
+  left: var(--th-traffic-left) !important;
+  top: var(--th-traffic-top) !important;
+  right: auto !important;
+  display: flex !important;
+  gap: var(--th-traffic-gap) !important;
+  -webkit-app-region: no-drag !important;
+}
+
+/* 2c fallback removed: the previous
+ * div[style*="position: absolute"][style*="right"] rule matched any
+ * absolutely-positioned right-anchored div (including Obsidian layout
+ * containers) and pulled it to the top-left, which visibly widened the
+ * native Obsidian buttons. Unknown apps now simply don't match rather
+ * than risk breaking their layout. */
+
+/* --------------------------------------------------------------------------
+ * 2d. Decorative fallback (design note only, no permanent rule here).
+ *     When no real window-control group matches, the renderer inserts one
+ *     short-lived `html::before` via `ctx.css.insert` (see
+ *     DECORATIVE_FALLBACK_CSS in src/renderer.ts): fixed position reusing
+ *     --th-traffic-size / --th-traffic-gap / --th-traffic-left /
+ *     --th-traffic-top, empty content, pointer-events none, decorative and
+ *     not clickable, hidden under forced-colors mode. No `html::before` /
+ *     `body::before` permanent rule lives in this static file, so apps
+ *     without matches stay untouched unless the fallback is enabled.
+ * -------------------------------------------------------------------------- */
+
+/* --------------------------------------------------------------------------
+ * 3. Repaint: turn each control button into a 12px traffic-light circle.
+ *    The original <button> stays in the DOM and stays clickable; we only
+ *    override its presentation. Text/icon glyphs inside are hidden and
+ *    replaced with pure-CSS circles + hover glyphs.
+ * -------------------------------------------------------------------------- */
+.window-controls button,
+.window-controls-container button,
+.window-controls [role="button"],
+.window-controls-container [role="button"],
+[class*="winButtons" i] > *,
+[class*="winButton" i],
+[class*="p-titlebar__controls" i] button,
+.caption-buttons button,
+.captionButtons button {
+  width: var(--th-traffic-size) !important;
+  height: var(--th-traffic-size) !important;
+  min-width: var(--th-traffic-size) !important;
+  min-height: var(--th-traffic-size) !important;
+  max-width: var(--th-traffic-size) !important;
+  max-height: var(--th-traffic-size) !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 50% !important;
+  border: 1px solid rgb(0 0 0 / 12%) !important;
+  box-shadow: inset 0 0 2px rgb(0 0 0 / 12%) !important;
+  background: #e0e0e0 !important;
+  color: transparent !important;
+  font-size: 0 !important;
+  line-height: 1 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: default !important;
+  -webkit-app-region: no-drag !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+/* Hide the original self-drawn icons (svg/icon fonts) but keep layout. */
+.window-controls button svg,
+.window-controls-container button svg,
+.window-controls button img,
+.window-controls-container button img,
+.window-controls button span,
+.window-controls-container button span,
+[class*="winButtons" i] svg,
+[class*="p-titlebar__controls" i] svg {
+  display: none !important;
+}
+
+/* Color by function where the app exposes semantics (most robust). */
+.window-controls button[aria-label*="Close" i],
+.window-controls-container button[aria-label*="Close" i],
+.window-controls button[title*="Close" i],
+.window-controls-container button[title*="Close" i],
+.window-controls button[data-action*="close" i],
+[class*="winButton" i][aria-label*="Close" i],
+button[class*="close" i] {
+  background: #ff5f57 !important;
+  border-color: #e0443e !important;
+  order: 1 !important;
+}
+.window-controls button[aria-label*="Minimiz" i],
+.window-controls-container button[aria-label*="Minimiz" i],
+.window-controls button[title*="Minimiz" i],
+.window-controls-container button[title*="Minimiz" i],
+[class*="winButton" i][aria-label*="Minimiz" i],
+button[class*="minimiz" i],
+button[class*="minimize" i] {
+  background: #febc2e !important;
+  border-color: #de9f22 !important;
+  order: 2 !important;
+}
+.window-controls button[aria-label*="Maximiz" i],
+.window-controls-container button[aria-label*="Maximiz" i],
+.window-controls button[aria-label*="Restor" i],
+.window-controls-container button[aria-label*="Restor" i],
+.window-controls button[title*="Maximiz" i],
+.window-controls-container button[title*="Maximiz" i],
+[class*="winButton" i][aria-label*="Maximiz" i],
+button[class*="maximiz" i] {
+  background: #28c840 !important;
+  border-color: #1dad2b !important;
+  order: 3 !important;
+}
+
+/* Positional fallback for Windows-order clusters [min, max, close]:
+ * reorder to macOS order [close, min, max] and paint accordingly. */
+.window-controls > :nth-child(1):not([aria-label*="Close" i]),
+.window-controls-container > :nth-child(1):not([aria-label*="Close" i]) {
+  order: 2 !important;
+}
+.window-controls > :nth-child(2):not([aria-label*="Close" i]),
+.window-controls-container > :nth-child(2):not([aria-label*="Close" i]) {
+  order: 3 !important;
+}
+.window-controls > :nth-child(3):not([aria-label*="Close" i]),
+.window-controls-container > :nth-child(3):not([aria-label*="Close" i]) {
+  order: 1 !important;
+}
+
+/* When no semantic attributes exist, paint by position as last resort. */
+.window-controls > :nth-child(3):last-child,
+.window-controls-container > :nth-child(3):last-child {
+  background: #ff5f57 !important;
+  border-color: #e0443e !important;
+}
+.window-controls > :nth-child(1):first-child,
+.window-controls-container > :nth-child(1):first-child {
+  background: #febc2e !important;
+  border-color: #de9f22 !important;
+}
+.window-controls > :nth-child(2):nth-last-child(2),
+.window-controls-container > :nth-child(2):nth-last-child(2) {
+  background: #28c840 !important;
+  border-color: #1dad2b !important;
+}
+
+/* --------------------------------------------------------------------------
+ * 4. Hover / active: show macOS-style glyphs (x / - / +) via ::after.
+ *    Glyphs are decorative; the underlying button behaviour is unchanged.
+ * -------------------------------------------------------------------------- */
+.window-controls button::after,
+.window-controls-container button::after,
+[class*="winButtons" i] > *::after {
+  content: "" !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  color: rgb(0 0 0 / 55%) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.window-controls button:hover::after,
+.window-controls-container button:hover::after,
+[class*="winButtons" i] > *:hover::after {
+  opacity: 1 !important;
+}
+/* Close -> x, minimize -> -, zoom -> + (by order slot). */
+.window-controls button[style*="order: 1"]::after,
+.window-controls button[order="1"]::after {
+  content: "×" !important;
+}
+.window-controls button:hover::after,
+.window-controls-container button:hover::after {
+  content: "•" !important;
+}
+.window-controls
+  button[aria-label*="Close" i]:hover::after,
+.window-controls-container
+  button[aria-label*="Close" i]:hover::after {
+  content: "×" !important;
+}
+.window-controls
+  button[aria-label*="Minimiz" i]:hover::after,
+.window-controls-container
+  button[aria-label*="Minimiz" i]:hover::after {
+  content: "–" !important;
+}
+.window-controls
+  button[aria-label*="Maximiz" i]:hover::after,
+.window-controls-container
+  button[aria-label*="Maximiz" i]:hover::after,
+.window-controls
+  button[aria-label*="Restor" i]:hover::after,
+.window-controls-container
+  button[aria-label*="Restor" i]:hover::after {
+  content: "+" !important;
+}
+
+.window-controls button:active,
+.window-controls-container button:active {
+  filter: brightness(0.85) !important;
+}
+
+/* --------------------------------------------------------------------------
+ * 5. Light / dark adaptation + accessibility.
+ * -------------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  .window-controls button,
+  .window-controls-container button {
+    box-shadow:
+      inset 0 0 2px rgb(0 0 0 / 30%),
+      0 0 0 1px rgb(255 255 255 / 6%) !important;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  .window-controls button,
+  .window-controls-container button {
+    box-shadow: inset 0 0 2px rgb(0 0 0 / 12%) !important;
+  }
+}
+
+.window-controls button:focus-visible,
+.window-controls-container button:focus-visible {
+  outline: 2px solid #0a84ff !important;
+  outline-offset: 2px !important;
+  opacity: 1 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .window-controls button,
+  .window-controls-container button {
+    transition: none !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * 6. Reserve space so the app title / tabs do not slide under the lights.
+ *    This only adds left padding to known titlebar content areas; unknown
+ *    apps are unaffected (selector simply does not match).
+ * -------------------------------------------------------------------------- */
+.titlebar .window-title,
+.titlebar .title-label,
+[class*="titlebar" i] [class*="title" i] {
+  padding-left: var(--th-traffic-reserved) !important;
+}

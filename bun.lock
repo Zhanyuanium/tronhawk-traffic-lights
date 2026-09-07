@@ -1,0 +1,38 @@
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "tronhawk-plugin-traffic-lights",
+      "dependencies": {
+        "@tronhawk/sdk": "^0.2.0",
+      },
+      "devDependencies": {
+        "@tronhawk/cli": "^0.1.1",
+        "@types/bun": "^1.4.0",
+        "typescript": "^5",
+      },
+    },
+  },
+  "packages": {
+    "@jitl/quickjs-ffi-types": ["@jitl/quickjs-ffi-types@0.32.0", "https://registry.npmmirror.com/@jitl/quickjs-ffi-types/-/quickjs-ffi-types-0.32.0.tgz", {}, "sha512-v9T+GQpmk43VDJ7d72sf0Nexhk+ArvtUihW27dy7lqAl0zBObFKtSBBIm5RBjwIhE8VwsPPm9PNuvPvNqLWUEg=="],
+
+    "@jitl/quickjs-singlefile-cjs-release-sync": ["@jitl/quickjs-singlefile-cjs-release-sync@0.32.0", "https://registry.npmmirror.com/@jitl/quickjs-singlefile-cjs-release-sync/-/quickjs-singlefile-cjs-release-sync-0.32.0.tgz", { "dependencies": { "@jitl/quickjs-ffi-types": "0.32.0" } }, "sha512-NjUUcw26PoeJHND6nmflAH8nIvAJvxJ2qkSPi95wfiBqPim80GtcdWommroiWb8hh1/7fVettEwodAsGt2Mrsg=="],
+
+    "@tronhawk/cli": ["@tronhawk/cli@0.1.1", "https://registry.npmmirror.com/@tronhawk/cli/-/cli-0.1.1.tgz", { "dependencies": { "@jitl/quickjs-singlefile-cjs-release-sync": "^0.32.0", "quickjs-emscripten-core": "^0.32.0" }, "bin": { "tronhawk": "src/cli.ts", "tronhawk-cli": "src/cli.ts" } }, "sha512-F7zKjA1WlSNUGstTW7R0X+XFLW/Tx43vVbwda9KBaoNq3O+acHlsvDLPgucP5sgmIeCTflOEbBaUMSLBcGwGBQ=="],
+
+    "@tronhawk/sdk": ["@tronhawk/sdk@0.2.0", "https://registry.npmmirror.com/@tronhawk/sdk/-/sdk-0.2.0.tgz", {}, "sha512-0tOMUENeV0ume0HiTpYg5O0TiRRJLw7u69m6tvx2vZL+jlpEmohwMgnPSgpRT4BzOAIvVezJ7tbV0Q4rp1nCbQ=="],
+
+    "@types/bun": ["@types/bun@1.4.1", "https://registry.npmmirror.com/@types/bun/-/bun-1.4.1.tgz", { "dependencies": { "bun-types": "1.4.1" } }, "sha512-0AVGiTXGajf1rgKom3N+c5L7CBxuoyyv1i44M0nX4UDK0G/fnRAMiri93nHuVPIb429KKtAgj7HatVmmOjeQLA=="],
+
+    "@types/node": ["@types/node@26.4.1", "https://registry.npmmirror.com/@types/node/-/node-26.4.1.tgz", { "dependencies": { "undici-types": "~8.3.0" } }, "sha512-k97ENvZWtvA6yqz5/FS6a7duDgOPEeOQOc2iKS/nY6mX6qJUKtLnWzQS+Xj6tXweyj6ZcTAK2Qecetnvi9nCLA=="],
+
+    "bun-types": ["bun-types@1.4.1", "https://registry.npmmirror.com/bun-types/-/bun-types-1.4.1.tgz", { "dependencies": { "@types/node": "*" } }, "sha512-loKuVrAFZKfEv+JvWkHRS9GW5IqLuLRjVXN9p+vZvBN86O5hf/pBZQ5hSoyipsrMmWObZBDvWnlmKvjKTM0PdA=="],
+
+    "quickjs-emscripten-core": ["quickjs-emscripten-core@0.32.0", "https://registry.npmmirror.com/quickjs-emscripten-core/-/quickjs-emscripten-core-0.32.0.tgz", { "dependencies": { "@jitl/quickjs-ffi-types": "0.32.0" } }, "sha512-QFnPfjFey8EqknSrSxe1hZrf1/8z7/6s1QzGOmKo6++02r7QRRX7ZoyNaZh7JuVjWsVW87KnQrbZqnHkOAzUyg=="],
+
+    "typescript": ["typescript@5.9.3", "https://registry.npmmirror.com/typescript/-/typescript-5.9.3.tgz", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "undici-types": ["undici-types@8.3.0", "https://registry.npmmirror.com/undici-types/-/undici-types-8.3.0.tgz", {}, "sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ=="],
+  }
+}

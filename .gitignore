@@ -1,0 +1,15 @@
+# Node / bun
+node_modules/
+
+# Build output
+dist/
+out/
+
+# Packed plugin artifact
+*.thx
+
+# Logs
+*.log
+
+# Local deepwork progress state
+.slim/deepwork/
