@@ -70,13 +70,17 @@ cargo run -p tronhawk-package --bin tronhawk-pack -- pack <path-to-plugin> traff
 - `renderer.css` —— 注入 `style.css`（经 `webContents.insertCSS` 的静态 CSS
   data）及一小段运行时 padding 补丁，开启时再加一段短期装饰兜底规则。
 - `renderer.dom` —— 用快照式 `query` 探测窗口控件组（诊断日志 + 兜底
-  检测），仅在装饰兜底生效期间保留一个短期 `observe` 订阅。真实控件一
+  检测），仅在兜底生效期间保留一个短期 `observe` 订阅。真实控件一
   出现或插件停用即断开；快照相对实时 DOM 最多滞后一个轮询间隔（约
   500ms）。
 - `renderer.script` —— 仅做一次标题保持式 `ctx.script.setDocumentTitle`
   调用（读 `<title>` 快照再写回，可见标题不变）。必须声明，否则 Core 仅在
   grants 含 `renderer.script`（或 `runtime.unsafe`）时才保留
   `plugin.renderer`，renderer 将根本不会执行。
+- `electron.windowControls` —— 宿主托管的功能性 overlay
+ （`ctx.windowControls.mount` / `unmount`，固定样式红绿灯，绑定当前窗口
+  的最小化 / 最大化切换 / 关闭）。仅在未检测到原控件时使用，与装饰灯
+  永不同时显示。
 
 ## Manifest（须满足宿主 schema）
 
@@ -88,7 +92,7 @@ cargo run -p tronhawk-package --bin tronhawk-pack -- pack <path-to-plugin> traff
   "author": "TronHawk Contributors",
   "tronhawk": "^0.1",
   "entry": { "css": "style.css", "renderer": "src/renderer.js" },
-  "permissions": ["renderer.css", "renderer.dom", "renderer.script"]
+  "permissions": ["renderer.css", "renderer.dom", "renderer.script", "electron.windowControls"]
 }
 ```
 
@@ -107,6 +111,7 @@ cargo run -p tronhawk-package --bin tronhawk-pack -- pack <path-to-plugin> traff
 | `traffic-gap` | number | 8 | 按钮间距（px，对应 `--th-traffic-gap`） |
 | `left-offset` | number | 12 | 按钮组左偏移（px，对应 `--th-traffic-left`） |
 | `decorative-fallback-lights` | boolean | true | 未检测到窗口控件时显示装饰性兜底灯（装饰性，不可点击） |
+| `functional-fallback-controls` | boolean | true | 未检测到窗口控件时优先挂载功能性宿主 overlay（functional host overlay，可点击） |
 
 也可以直接覆盖 CSS 变量：
 
@@ -138,6 +143,17 @@ cargo run -p tronhawk-package --bin tronhawk-pack -- pack <path-to-plugin> traff
   待晚到的真实控件（轮询延迟最多约 500ms），一旦出现立即移除兜底。单
   个 `html::before` 可能与同样使用 `html::before` 的应用或用户样式冲
   突，冲突时请将 `decorative-fallback-lights` 设为 `false`。
+- 功能性兜底（默认开启，`functional-fallback-controls`）：未检测到真实
+  控件组时，renderer 会先请求宿主挂载功能性 overlay
+ （`ctx.windowControls.mount`，需 `electron.windowControls` 权限）。
+  该 overlay 由宿主托管、样式固定、可点击（最小化 / 最大化切换 / 关闭
+  当前窗口）。降级顺序严格为：真实控件（CSS 搬移，无 JS 兜底）→ 功能性
+  宿主 overlay → 装饰灯（不可点击）→ 无兜底。overlay 与装饰灯永不同时
+  显示：`mount()` 成功则跳过装饰灯；`mount()` 被拒（或宿主无该 API）则
+  回落到装饰档；晚到的真实控件会先 unmount overlay 再转搬移路。
+  `deactivate` 永远先断 observer，再 unmount overlay，再清装饰与 padding
+  CSS，各步互不跳过、永不 reject。如需跳过 overlay 直走装饰档，请将
+  `functional-fallback-controls` 设为 `false`。
 - 若应用本身已渲染原生 macOS 红绿灯，插件会主动避让，避免重复渲染。
 - 标题栏保持 `-webkit-app-region: drag`，按钮使用 `no-drag` 以保证可点击；
   hover 显示 `×/–/+` 字形；保留 `focus-visible` 无障碍轮廓；已做

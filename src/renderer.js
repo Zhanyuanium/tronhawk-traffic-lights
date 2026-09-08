@@ -5,6 +5,11 @@
  * `manifest.json` points at because the runtime's `vm.evalCode` only accepts
  * CommonJS (`module.exports = { activate, deactivate }`).
  *
+ * Downgrade order on a full miss: real controls (CSS move) -> functional
+ * host overlay (`ctx.windowControls.mount`, clickable) -> decorative
+ * fallback (`html::before`, pointer-events none, not clickable) -> nothing.
+ * The overlay and the decorative fallback are never shown together.
+ *
  * Sandbox contract: never use `console.*`, only log via `ctx.logger` with
  * plain strings, and never return a non-undefined value from event callbacks
  * (the `observe` callback below returns `undefined` synchronously).
@@ -14,6 +19,8 @@ let patchCssId = null;
 let fallbackCssId = null;
 let controlObserverDisconnect = null;
 let controlsObserved = false;
+let overlayMounted = false;
+let mountPending = false;
 
 const WINDOW_CONTROL_SELECTOR =
   ".window-controls,.window-controls-container,.window-control," +
@@ -30,6 +37,20 @@ const DECORATIVE_FALLBACK_CSS =
   "calc((var(--th-traffic-size,12px) + var(--th-traffic-gap,8px)) * 2) 0 0 #28c840;" +
   "pointer-events:none;z-index:9999}" +
   "@media (forced-colors:active){html::before{display:none !important}}";
+
+function getWindowControls(ctx) {
+  const candidate = ctx && ctx.windowControls;
+  if (candidate === null || candidate === undefined) {
+    return null;
+  }
+  if (typeof candidate !== "object") {
+    return null;
+  }
+  if (typeof candidate.mount !== "function" || typeof candidate.unmount !== "function") {
+    return null;
+  }
+  return candidate;
+}
 
 async function removeFallbackCss(ctx) {
   const id = fallbackCssId;
@@ -55,37 +76,82 @@ function disconnectControlObserver() {
   }
 }
 
+async function unmountOverlay(ctx) {
+  if (!overlayMounted) {
+    return;
+  }
+  overlayMounted = false;
+  const wc = getWindowControls(ctx);
+  if (wc === null) {
+    return;
+  }
+  try {
+    await wc.unmount();
+  } catch (_e) {
+    ctx.logger.warn("[traffic-lights] windowControls unmount failed");
+  }
+}
+
+async function cancelPendingMount(ctx) {
+  if (!mountPending) {
+    return;
+  }
+  mountPending = false;
+  const wc = getWindowControls(ctx);
+  if (wc === null) {
+    return;
+  }
+  try {
+    await wc.unmount();
+  } catch (_e) {
+    ctx.logger.warn("[traffic-lights] windowControls unmount failed");
+  }
+}
+
 async function activate(ctx) {
   ctx.logger.info("[traffic-lights] activate: moving controls to top-left");
   controlsObserved = false;
+  mountPending = false;
+  await unmountOverlay(ctx);
+  overlayMounted = false;
 
-  let fallbackEnabled = true;
+  let decorativeEnabled = true;
+  let functionalEnabled = true;
   try {
-    fallbackEnabled = ctx.config.get("decorative-fallback-lights") !== false;
+    decorativeEnabled = ctx.config.get("decorative-fallback-lights") !== false;
+    functionalEnabled = ctx.config.get("functional-fallback-controls") !== false;
   } catch (_e) {
     ctx.logger.warn("[traffic-lights] config read failed");
-    fallbackEnabled = false;
+    decorativeEnabled = false;
+    functionalEnabled = false;
   }
 
-  if (fallbackEnabled) {
-    let controlsFound = false;
-    let queryFailed = false;
-    try {
-      const found = await ctx.dom.query(WINDOW_CONTROL_SELECTOR);
-      if (found !== null) {
-        controlsFound = true;
-        ctx.logger.info("[traffic-lights] window controls found");
-      }
-    } catch (_e) {
-      queryFailed = true;
-      ctx.logger.warn("[traffic-lights] controls query failed");
+  let controlsFound = false;
+  let queryFailed = false;
+  try {
+    const found = await ctx.dom.query(WINDOW_CONTROL_SELECTOR);
+    if (found !== null) {
+      controlsFound = true;
+      ctx.logger.info("[traffic-lights] window controls found");
     }
-    if (!queryFailed && !controlsFound) {
-      let observeRegistered = false;
+  } catch (_e) {
+    queryFailed = true;
+    ctx.logger.warn("[traffic-lights] controls query failed");
+  }
+
+  if (controlsFound) {
+    await unmountOverlay(ctx);
+  } else if (!queryFailed) {
+    let observeRegistered = false;
+    const overlayAvailable =
+      functionalEnabled && getWindowControls(ctx) !== null;
+    if (decorativeEnabled || overlayAvailable) {
       try {
         const disconnect = ctx.dom.observe(WINDOW_CONTROL_SELECTOR, (_node) => {
           controlsObserved = true;
           disconnectControlObserver();
+          void cancelPendingMount(ctx);
+          void unmountOverlay(ctx);
           void removeFallbackCss(ctx);
           return undefined;
         });
@@ -96,7 +162,39 @@ async function activate(ctx) {
         controlObserverDisconnect = null;
         observeRegistered = false;
       }
-      if (observeRegistered) {
+    }
+
+    let overlayActive = false;
+    if (functionalEnabled && observeRegistered) {
+      const wc = getWindowControls(ctx);
+      if (wc !== null) {
+        mountPending = true;
+        try {
+          await wc.mount();
+          if (!mountPending || controlsObserved) {
+            mountPending = false;
+            overlayMounted = true;
+            await unmountOverlay(ctx);
+            overlayActive = false;
+          } else {
+            mountPending = false;
+            overlayMounted = true;
+            overlayActive = true;
+            ctx.logger.info("[traffic-lights] windowControls overlay mounted");
+          }
+        } catch (_e) {
+          mountPending = false;
+          ctx.logger.warn("[traffic-lights] windowControls mount failed");
+          overlayMounted = false;
+          overlayActive = false;
+        }
+      } else {
+        ctx.logger.info("[traffic-lights] windowControls unavailable");
+      }
+    }
+
+    if (!overlayActive) {
+      if (decorativeEnabled && observeRegistered && !controlsObserved) {
         try {
           fallbackCssId = await ctx.css.insert(DECORATIVE_FALLBACK_CSS);
         } catch (_e) {
@@ -107,6 +205,9 @@ async function activate(ctx) {
         if (fallbackCssId !== null && controlsObserved) {
           await removeFallbackCss(ctx);
         }
+      }
+      if (!overlayMounted && fallbackCssId === null && !decorativeEnabled) {
+        disconnectControlObserver();
       }
     }
   }
@@ -149,6 +250,16 @@ async function deactivate(ctx) {
       ctx.logger.warn("[traffic-lights] observer disconnect failed");
     }
     try {
+      await cancelPendingMount(ctx);
+    } catch (_e) {
+      ctx.logger.warn("[traffic-lights] windowControls unmount failed");
+    }
+    try {
+      await unmountOverlay(ctx);
+    } catch (_e) {
+      ctx.logger.warn("[traffic-lights] windowControls unmount failed");
+    }
+    try {
       await removeFallbackCss(ctx);
     } catch (_e) {
       ctx.logger.warn("[traffic-lights] fallback CSS cleanup failed");
@@ -166,6 +277,8 @@ async function deactivate(ctx) {
       fallbackCssId = null;
       controlObserverDisconnect = null;
       controlsObserved = false;
+      overlayMounted = false;
+      mountPending = false;
     }
     ctx.logger.info("[traffic-lights] deactivate: controls restored");
   } catch (_e) {

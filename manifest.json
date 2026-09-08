@@ -8,7 +8,7 @@
     "css": "style.css",
     "renderer": "src/renderer.js"
   },
-  "permissions": ["renderer.css", "renderer.dom", "renderer.script"],
+  "permissions": ["renderer.css", "renderer.dom", "renderer.script", "electron.windowControls"],
   "config": {
     "button-size": {
       "type": "number",
@@ -29,6 +29,11 @@
       "type": "boolean",
       "default": true,
       "label": "Decorative fallback lights (decorative, not clickable)"
+    },
+    "functional-fallback-controls": {
+      "type": "boolean",
+      "default": true,
+      "label": "Functional fallback (functional host overlay)"
     }
   }
 }

@@ -76,7 +76,7 @@ Then load `traffic-lights.thx` in the TronHawk Manager.
   enabled, one short-lived decorative fallback rule.
 - `renderer.dom` — snapshot `query` probe for the window-control group
   (diagnostics + fallback detection), plus a short-lived `observe`
-  subscription only while the decorative fallback is active. The observer
+  subscription only while a fallback is active. The observer
   disconnects as soon as real controls appear or on deactivate; snapshots
   lag live DOM by up to one poll interval (~500ms).
 - `renderer.script` — one title-preserving `ctx.script.setDocumentTitle`
@@ -84,6 +84,11 @@ Then load `traffic-lights.thx` in the TronHawk Manager.
   title never changes). Required because Core only keeps `plugin.renderer`
   in the execution plan when grants include `renderer.script` (or
   `runtime.unsafe`); without it the renderer never runs.
+- `electron.windowControls` — host-hosted functional overlay
+  (`ctx.windowControls.mount` / `unmount`, fixed-style traffic lights bound
+  to the current window: minimize / toggle-maximize / close). Only used
+  when no original controls are detected; never shown together with the
+  decorative fallback.
 
 ## Manifest (must satisfy the host schema)
 
@@ -95,7 +100,7 @@ Then load `traffic-lights.thx` in the TronHawk Manager.
   "author": "TronHawk Contributors",
   "tronhawk": "^0.1",
   "entry": { "css": "style.css", "renderer": "src/renderer.js" },
-  "permissions": ["renderer.css", "renderer.dom", "renderer.script"]
+  "permissions": ["renderer.css", "renderer.dom", "renderer.script", "electron.windowControls"]
 }
 ```
 
@@ -115,6 +120,7 @@ Set in the Manager settings form (defaults from `manifest.json`):
 | `traffic-gap` | number | 8 | Gap between buttons (px, maps to `--th-traffic-gap`) |
 | `left-offset` | number | 12 | Left offset of the group (px, maps to `--th-traffic-left`) |
 | `decorative-fallback-lights` | boolean | true | Show decorative fallback lights when no window controls are detected (decorative, not clickable) |
+| `functional-fallback-controls` | boolean | true | Prefer the functional host overlay when no window controls are detected (functional host overlay, clickable) |
 
 You can also override the CSS variables directly:
 
@@ -152,6 +158,22 @@ You can also override the CSS variables directly:
   `html::before` may conflict with apps or user styles that also use
   `html::before`; set `decorative-fallback-lights` to `false` if that
   happens.
+- Functional fallback (default on, `functional-fallback-controls`): when no
+  real control group is detected, the renderer first asks the host to mount
+  its functional overlay (`ctx.windowControls.mount`, requires the
+  `electron.windowControls` permission). The overlay is host-hosted with a
+  fixed style and fully clickable (minimize / toggle-maximize / close the
+  current window). Downgrade order is strict: real controls (CSS move, no
+  JS fallback) → functional host overlay → decorative lights (not
+  clickable) → nothing. The overlay and the decorative lights are never
+  shown together: a successful `mount()` skips the decorative insert, a
+  rejected `mount()` (or a host without the API) falls back to the
+  decorative tier, and late-appearing real controls unmount the overlay
+  (then the CSS move path takes over). `deactivate` always disconnects the
+  observer first, then unmounts the overlay, then removes the decorative
+  and padding CSS — each step independent, never rejecting. Set
+  `functional-fallback-controls` to `false` to skip the overlay and go
+  straight to the decorative tier.
 - If the app already renders native macOS traffic lights, the plugin leaves
   them alone to avoid duplicates.
 - Titlebar keeps `-webkit-app-region: drag`; buttons use `no-drag` so they

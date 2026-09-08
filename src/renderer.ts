@@ -19,9 +19,84 @@ let controlObserverDisconnect: (() => void) | null = null;
 let controlsObserved = false;
 
 /**
+ * True while the host-hosted functional overlay is mounted.
+ * The overlay and the decorative fallback are never shown together.
+ */
+let overlayMounted = false;
+
+/**
+ * True while a `windowControls.mount()` is in flight. Cleared when it
+ * settles, when the observer fires first, or on deactivate — so a late
+ * mount success after cancellation unmounts instead of sticking around
+ * next to real controls (or as residue after deactivate).
+ */
+let mountPending = false;
+
+/**
+ * Minimal host windowControls surface. `@tronhawk/sdk@0.2.0` has no
+ * `windowControls` declaration, so we narrow locally instead of relying on
+ * the SDK type. Never `any`: the runtime check in `getWindowControls`
+ * verifies shape before any call.
+ */
+interface HostWindowControls {
+  mount(): Promise<void>;
+  unmount(): Promise<void>;
+}
+
+/** RendererContext with an optional host overlay (old hosts omit it). */
+type RendererContextWithOverlay = RendererContext & {
+  windowControls?: unknown;
+};
+
+/**
+ * Return the host overlay API when present and well-formed, else null.
+ * Must be called before every mount/unmount (never assume existence).
+ */
+function getWindowControls(ctx: RendererContext): HostWindowControls | null {
+  const candidate = (ctx as RendererContextWithOverlay).windowControls;
+  if (candidate === null || candidate === undefined) {
+    return null;
+  }
+  if (typeof candidate !== "object") {
+    return null;
+  }
+  const mount = (candidate as { mount?: unknown }).mount;
+  const unmount = (candidate as { unmount?: unknown }).unmount;
+  if (typeof mount !== "function" || typeof unmount !== "function") {
+    return null;
+  }
+  return candidate as HostWindowControls;
+}
+
+/**
+ * Cancel an in-flight `windowControls.mount()` by issuing a host `unmount()`
+ * while still pending. The host treats unmount-during-pending as a cancel
+ * (pending-mount cancel semantics), so the overlay never gets a window in
+ * which to show next to real controls, and a mount that never settles still
+ * gets cancelled promptly instead of lingering. Best-effort and never
+ * rejects. No-op when no mount is pending. (The post-settle continuation
+ * still re-checks and unmounts again if the host mounted anyway.)
+ */
+async function cancelPendingMount(ctx: RendererContext): Promise<void> {
+  if (!mountPending) {
+    return;
+  }
+  mountPending = false;
+  const wc = getWindowControls(ctx);
+  if (wc === null) {
+    return;
+  }
+  try {
+    await wc.unmount();
+  } catch {
+    ctx.logger.warn("[traffic-lights] windowControls unmount failed");
+  }
+}
+
+/**
  * Real window-control groups only (single comma-separated selector).
  * Pure `.titlebar` containers are intentionally excluded: they always match
- * and would suppress the decorative fallback even when no buttons exist.
+ * and would suppress the fallback even when no buttons exist.
  */
 const WINDOW_CONTROL_SELECTOR: string =
   ".window-controls,.window-controls-container,.window-control," +
@@ -73,7 +148,34 @@ function disconnectControlObserver(): void {
 }
 
 /**
+ * Unmount the functional overlay when mounted. Flag-gated so a fresh
+ * activate/deactivate without a prior mount never touches the host.
+ * Never rejects: failures only warn, state is always cleared.
+ */
+async function unmountOverlay(ctx: RendererContext): Promise<void> {
+  if (!overlayMounted) {
+    return;
+  }
+  overlayMounted = false;
+  const wc = getWindowControls(ctx);
+  if (wc === null) {
+    return;
+  }
+  try {
+    await wc.unmount();
+  } catch {
+    ctx.logger.warn("[traffic-lights] windowControls unmount failed");
+  }
+}
+
+/**
  * Activate the plugin.
+ *
+ * Downgrade order on a full miss (no original controls):
+ * real controls (CSS move, no JS fallback) -> functional host overlay
+ * (`ctx.windowControls.mount`, clickable) -> decorative fallback
+ * (`html::before`, pointer-events none, not clickable) -> nothing.
+ * The overlay and the decorative fallback are never shown together.
  *
  * Sandbox contract: may return `undefined` synchronously or a `Promise`
  * (the runtime drains it). Must never use `console.*`, must only log via
@@ -84,34 +186,59 @@ function disconnectControlObserver(): void {
 export async function activate(ctx: RendererContext): Promise<void> {
   ctx.logger.info("[traffic-lights] activate: moving controls to top-left");
   controlsObserved = false;
+  mountPending = false;
+  // Best-effort cleanup of a stale overlay from a previous activate that
+  // never saw its deactivate (no-op when clean, never rejects).
+  await unmountOverlay(ctx);
+  overlayMounted = false;
 
-  let fallbackEnabled = true;
+  let decorativeEnabled = true;
+  let functionalEnabled = true;
   try {
-    fallbackEnabled = ctx.config.get("decorative-fallback-lights") !== false;
+    decorativeEnabled = ctx.config.get("decorative-fallback-lights") !== false;
+    functionalEnabled = ctx.config.get("functional-fallback-controls") !== false;
   } catch {
     ctx.logger.warn("[traffic-lights] config read failed");
-    fallbackEnabled = false;
+    decorativeEnabled = false;
+    functionalEnabled = false;
   }
 
-  if (fallbackEnabled) {
-    let controlsFound = false;
-    let queryFailed = false;
-    try {
-      const found = await ctx.dom.query(WINDOW_CONTROL_SELECTOR);
-      if (found !== null) {
-        controlsFound = true;
-        ctx.logger.info("[traffic-lights] window controls found");
-      }
-    } catch {
-      queryFailed = true;
-      ctx.logger.warn("[traffic-lights] controls query failed");
+  let controlsFound = false;
+  let queryFailed = false;
+  try {
+    const found = await ctx.dom.query(WINDOW_CONTROL_SELECTOR);
+    if (found !== null) {
+      controlsFound = true;
+      ctx.logger.info("[traffic-lights] window controls found");
     }
-    if (!queryFailed && !controlsFound) {
-      let observeRegistered = false;
+  } catch {
+    queryFailed = true;
+    ctx.logger.warn("[traffic-lights] controls query failed");
+  }
+
+  if (controlsFound) {
+    // Move path: original buttons stay functional via static CSS.
+    // Ensure no functional overlay is left mounted so we never double-show.
+    await unmountOverlay(ctx);
+  } else if (!queryFailed) {
+    // Full miss: register one short-lived observer for late-appearing
+    // controls. It unmounts the overlay (if mounted) and removes the
+    // decorative fallback, then disconnects. Registered only when a
+    // fallback can actually show: decorative enabled, or functional
+    // enabled with a host overlay present (old hosts get no observer).
+    let observeRegistered = false;
+    const overlayAvailable =
+      functionalEnabled && getWindowControls(ctx) !== null;
+    if (decorativeEnabled || overlayAvailable) {
       try {
         const disconnect = ctx.dom.observe(WINDOW_CONTROL_SELECTOR, (_node) => {
           controlsObserved = true;
           disconnectControlObserver();
+          // Prompt cancel: issue a host unmount while the mount is still
+          // pending (unmountOverlay below only covers the already-mounted
+          // case, where its flag is set).
+          void cancelPendingMount(ctx);
+          void unmountOverlay(ctx);
           void removeFallbackCss(ctx);
           return undefined;
         });
@@ -122,7 +249,49 @@ export async function activate(ctx: RendererContext): Promise<void> {
         controlObserverDisconnect = null;
         observeRegistered = false;
       }
-      if (observeRegistered) {
+    }
+
+    // Functional overlay first (clickable, host-hosted). Gated on the
+    // observer: without late-controls detection a mounted overlay could
+    // double-show with real controls, so fail closed (no mount) when the
+    // observer is missing.
+    let overlayActive = false;
+    if (functionalEnabled && observeRegistered) {
+      const wc = getWindowControls(ctx);
+      if (wc !== null) {
+        mountPending = true;
+        try {
+          await wc.mount();
+          if (!mountPending || controlsObserved) {
+            // Cancelled while pending (observer/deactivate already issued a
+            // cancel unmount above); if the host mounted anyway, unmount
+            // again so the final state stays single. Never mark active.
+            mountPending = false;
+            overlayMounted = true;
+            await unmountOverlay(ctx);
+            overlayActive = false;
+          } else {
+            mountPending = false;
+            overlayMounted = true;
+            overlayActive = true;
+            ctx.logger.info("[traffic-lights] windowControls overlay mounted");
+          }
+        } catch {
+          mountPending = false;
+          ctx.logger.warn("[traffic-lights] windowControls mount failed");
+          overlayMounted = false;
+          overlayActive = false;
+        }
+      } else {
+        ctx.logger.info("[traffic-lights] windowControls unavailable");
+      }
+    }
+
+    if (!overlayActive) {
+      // Decorative fallback (existing behavior): only when the overlay did
+      // not take over, reusing the observer above. Fails closed when the
+      // observer is missing or late controls already appeared.
+      if (decorativeEnabled && observeRegistered && !controlsObserved) {
         try {
           fallbackCssId = await ctx.css.insert(DECORATIVE_FALLBACK_CSS);
         } catch {
@@ -133,6 +302,11 @@ export async function activate(ctx: RendererContext): Promise<void> {
         if (fallbackCssId !== null && controlsObserved) {
           await removeFallbackCss(ctx);
         }
+      }
+      // No fallback active (mount failed + decorative disabled, or a race
+      // already resolved to real controls): do not leak the observer.
+      if (!overlayMounted && fallbackCssId === null && !decorativeEnabled) {
+        disconnectControlObserver();
       }
     }
   }
@@ -168,9 +342,10 @@ export async function activate(ctx: RendererContext): Promise<void> {
 }
 
 /**
- * Deactivate the plugin: disconnect the observer first, then clean up the
- * fallback and padding patches independently (one failure never skips the
- * other). Clears all module state and never rejects.
+ * Deactivate the plugin: disconnect the observer first, then cancel any
+ * pending mount and unmount the overlay, then clean up the fallback and
+ * padding patches independently (one failure never skips the other).
+ * Clears all module state and never rejects.
  */
 export async function deactivate(ctx: RendererContext): Promise<void> {
   try {
@@ -178,6 +353,19 @@ export async function deactivate(ctx: RendererContext): Promise<void> {
       disconnectControlObserver();
     } catch {
       ctx.logger.warn("[traffic-lights] observer disconnect failed");
+    }
+    try {
+      // Cancel any in-flight mount first (issues a host unmount while
+      // pending) so a pending mount never sticks around after deactivate;
+      // then clean up an already-mounted overlay.
+      await cancelPendingMount(ctx);
+    } catch {
+      ctx.logger.warn("[traffic-lights] windowControls unmount failed");
+    }
+    try {
+      await unmountOverlay(ctx);
+    } catch {
+      ctx.logger.warn("[traffic-lights] windowControls unmount failed");
     }
     try {
       await removeFallbackCss(ctx);
@@ -197,6 +385,8 @@ export async function deactivate(ctx: RendererContext): Promise<void> {
       fallbackCssId = null;
       controlObserverDisconnect = null;
       controlsObserved = false;
+      overlayMounted = false;
+      mountPending = false;
     }
     ctx.logger.info("[traffic-lights] deactivate: controls restored");
   } catch {
