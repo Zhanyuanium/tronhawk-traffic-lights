@@ -15,14 +15,17 @@
  * ========================================================================== */
 
 /* --------------------------------------------------------------------------
- * 0. Tunables. The Manager settings form (manifest `config`) and/or user
- *    stylesheets may override these variables. Keep the fallback values so
- *    the file works standalone.
+ * 0. Tunables. Override these variables from a user stylesheet to reskin the
+ *    relocated DOM buttons. Geometry is FIXED (d=14, pitch 24, gap 10,
+ *    left anchor 12, top 12) and no longer comes from manifest config: the
+ *    :root values below are the sole source, shared with the host overlay's
+ *    14px lights (DOM pitch = size + gap = 24, matching the 24px overlay
+ *    pitch).
  * -------------------------------------------------------------------------- */
 :root {
-  --th-traffic-size: 12px; /* maps to config `button-size` */
-  --th-traffic-gap: 8px; /* maps to config `traffic-gap` */
-  --th-traffic-left: 12px; /* maps to config `left-offset` */
+  --th-traffic-size: 14px; /* fixed lamp diameter; override here to reskin */
+  --th-traffic-gap: 10px; /* fixed inter-lamp gap; override here to reskin */
+  --th-traffic-left: 12px; /* fixed left anchor of the DOM cluster (not the overlay `left-offset` adjustment) */
   --th-traffic-top: 12px;
   --th-traffic-reserved: calc(
     var(--th-traffic-left) + var(--th-traffic-size) * 3 +
@@ -160,10 +163,13 @@ div[class*="winButtons" i] {
  * -------------------------------------------------------------------------- */
 
 /* --------------------------------------------------------------------------
- * 3. Repaint: turn each control button into a 12px traffic-light circle.
- *    The original <button> stays in the DOM and stays clickable; we only
- *    override its presentation. Text/icon glyphs inside are hidden and
- *    replaced with pure-CSS circles + hover glyphs.
+ * 3. Repaint: turn each control button into a 14px traffic-light circle
+ *    (shared visual language with the host overlay: same diameter, same
+ *    hover ×/–/+ glyphs, same focus outline; the only difference is the
+ *    control source — the app's own buttons stay in the DOM and stay
+ *    clickable here, versus host-rendered links in the overlay).
+ *    Text/icon glyphs inside are hidden and replaced with pure-CSS circles
+ *    + hover glyphs.
  * -------------------------------------------------------------------------- */
 .window-controls button,
 .window-controls-container button,
@@ -279,17 +285,21 @@ button[class*="maximiz" i] {
 }
 
 /* --------------------------------------------------------------------------
- * 4. Hover / active: show macOS-style glyphs (x / - / +) via ::after.
- *    Glyphs are decorative; the underlying button behaviour is unchanged.
+ * 4. Hover / active: show macOS-style glyphs (x / - / +) as centered SVG
+ *    backgrounds (same symmetric shapes as the host overlay; no font-size /
+ *    font dependency). Glyphs are decorative; the underlying button
+ *    behaviour is unchanged. Glyphs key on aria semantics (mirroring the
+ *    color rules); unclassified buttons show none.
  * -------------------------------------------------------------------------- */
 .window-controls button::after,
 .window-controls-container button::after,
 [class*="winButtons" i] > *::after {
   content: "" !important;
-  font-size: 9px !important;
-  font-weight: 700 !important;
-  line-height: 1 !important;
-  color: rgb(0 0 0 / 55%) !important;
+  width: 12px !important;
+  height: 12px !important;
+  background-position: center !important;
+  background-size: contain !important;
+  background-repeat: no-repeat !important;
   opacity: 0 !important;
   pointer-events: none !important;
 }
@@ -298,26 +308,20 @@ button[class*="maximiz" i] {
 [class*="winButtons" i] > *:hover::after {
   opacity: 1 !important;
 }
-/* Close -> x, minimize -> -, zoom -> + (by order slot). */
+/* Close -> x, minimize -> -, zoom -> + (same paths as the host overlay). */
 .window-controls button[style*="order: 1"]::after,
-.window-controls button[order="1"]::after {
-  content: "×" !important;
-}
-.window-controls button:hover::after,
-.window-controls-container button:hover::after {
-  content: "•" !important;
-}
+.window-controls button[order="1"]::after,
 .window-controls
   button[aria-label*="Close" i]:hover::after,
 .window-controls-container
   button[aria-label*="Close" i]:hover::after {
-  content: "×" !important;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2014%2014'%3E%3Cpath%20d='M4.75%204.75L9.25%209.25M9.25%204.75L4.75%209.25'%20fill='none'%20stroke='%23000'%20stroke-opacity='0.55'%20stroke-width='1.6'%20stroke-linecap='round'/%3E%3C/svg%3E") !important;
 }
 .window-controls
   button[aria-label*="Minimiz" i]:hover::after,
 .window-controls-container
   button[aria-label*="Minimiz" i]:hover::after {
-  content: "–" !important;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2014%2014'%3E%3Cpath%20d='M4.5%207H9.5'%20fill='none'%20stroke='%23000'%20stroke-opacity='0.55'%20stroke-width='1.6'%20stroke-linecap='round'/%3E%3C/svg%3E") !important;
 }
 .window-controls
   button[aria-label*="Maximiz" i]:hover::after,
@@ -327,7 +331,7 @@ button[class*="maximiz" i] {
   button[aria-label*="Restor" i]:hover::after,
 .window-controls-container
   button[aria-label*="Restor" i]:hover::after {
-  content: "+" !important;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2014%2014'%3E%3Cpath%20d='M7%204.5V9.5M4.5%207H9.5'%20fill='none'%20stroke='%23000'%20stroke-opacity='0.55'%20stroke-width='1.6'%20stroke-linecap='round'/%3E%3C/svg%3E") !important;
 }
 
 .window-controls button:active,

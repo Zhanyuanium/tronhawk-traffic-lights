@@ -90,6 +90,24 @@ Then load `traffic-lights.thx` in the TronHawk Manager.
   when no original controls are detected; never shown together with the
   decorative fallback.
 
+## Unified styling
+
+Both paths share one visual language — 14px vector lights (DIP/CSS px; 28 physical
+at DPR=2), pitch 24 (gap 10, 24x24 cells, inset 5), hover ×/–/+ vector glyphs
+(14-grid, centered, hover-only, aria-hidden), `#0a84ff` focus outline: the host
+overlay (transparent 24x24 hit cells in a 72xH view at (m+L, 0) where
+m=(H-24)/2, default
+(3,0,72,30), m=(H-24)/2, centered 14px inline SVGs, glyph shown on hover only)
+and the relocated DOM buttons (repainted in place with centered SVG-background
+glyphs on hover, still the app's own clickable controls). The
+only difference is the control source. The decorative fallback keeps no
+hover glyphs. Overlay pitch is fixed 24 (H only changes the view height and m);
+relocated-DOM pitch is likewise fixed (size 14 + gap 10 = 24) — customize it
+via the `:root` variable overrides below, not via manifest config.
+Overlay tooltips come from a host-side en/zh table selected by the app locale
+(`zh` prefix → Chinese), overridable per action via the `tooltip-*` configs
+(empty = language default).
+
 ## Manifest (must satisfy the host schema)
 
 ```json
@@ -116,18 +134,33 @@ Set in the Manager settings form (defaults from `manifest.json`):
 
 | Key | Type | Default | Meaning |
 | --- | ---- | ------- | ------- |
-| `button-size` | number | 12 | Traffic light button diameter (px, maps to `--th-traffic-size`) |
-| `traffic-gap` | number | 8 | Gap between buttons (px, maps to `--th-traffic-gap`) |
-| `left-offset` | number | 12 | Left offset of the group (px, maps to `--th-traffic-left`) |
+| `left-offset` | number | 0 | Left adjustment L in CSS px/DIP, clamped 0-256 (host overlay geometry; view origin x = m+L where m=(H-24)/2) |
+| `region-height` | number | 30 | Overlay region height H in CSS px/DIP, clamped 30-64 (host overlay geometry; view is 72×H, cells 24×24 at m=(H-24)/2) |
+| `tooltip-close` | string | "" | Close tooltip override (empty = language default) |
+| `tooltip-minimize` | string | "" | Minimize tooltip override (empty = language default) |
+| `tooltip-maximize` | string | "" | Maximize tooltip override (empty = language default) |
+| `tooltip-restore` | string | "" | Restore tooltip override (empty = language default) |
 | `decorative-fallback-lights` | boolean | true | Show decorative fallback lights when no window controls are detected (decorative, not clickable) |
 | `functional-fallback-controls` | boolean | true | Prefer the functional host overlay when no window controls are detected (functional host overlay, clickable) |
 
-You can also override the CSS variables directly:
+Host overlay geometry is declarative and restricted: the host reads only
+`region-height` (H) and `left-offset` (L) from the plan config snapshot (manifest
+defaults overlaid with stored values). All values are DIP/CSS px — the host never
+converts pixels, reads `devicePixelRatio`/`scaleFactor`, or measures the
+display, and there is no automatic display adaptation (physical pixels are never
+taken as CSS px: 14 CSS = 28 physical at DPR=2). Sole table: d=14, p=24, cell
+24×24, inset 5, gap 10, H=30 (30..64), m=(H-24)/2, default bounds (3,0,72,30). Visual
+lights are a constant 14px; a plan revision with different values destroys the
+old view and rebuilds, and co-owners with conflicting geometries fail closed on
+`mount()` (which takes no arguments and performs no DOM measurement).
+
+DOM-path geometry is fixed (d=14, pitch 24, gap 10); customize it by
+overriding the CSS variables directly:
 
 ```css
 :root {
-  --th-traffic-size: 12px;
-  --th-traffic-gap: 8px;
+  --th-traffic-size: 14px;
+  --th-traffic-gap: 10px;
   --th-traffic-left: 12px;
   --th-traffic-top: 12px;
 }

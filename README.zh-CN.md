@@ -79,8 +79,21 @@ cargo run -p tronhawk-package --bin tronhawk-pack -- pack <path-to-plugin> traff
   `plugin.renderer`，renderer 将根本不会执行。
 - `electron.windowControls` —— 宿主托管的功能性 overlay
  （`ctx.windowControls.mount` / `unmount`，固定样式红绿灯，绑定当前窗口
-  的最小化 / 最大化切换 / 关闭）。仅在未检测到原控件时使用，与装饰灯
-  永不同时显示。
+ 的最小化 / 最大化切换 / 关闭）。仅在未检测到原控件时使用，与装饰灯
+ 永不同时显示。
+
+## 统一样式
+
+两条路径共用同一套视觉语言——14px 矢量灯（DIP/CSS px；DPR=2 时 28 物理像素）、
+pitch 24（gap 10、24×24 格、内距 5）、悬停 ×/–/+ 矢量字形（14 网格、居中、
+仅悬停显示、aria-hidden）、`#0a84ff` focus 轮廓：宿主 overlay（72×H 视图、
+原点 (m+L, 0) 其中 m=(H-24)/2、默认 (3,0,72,30)、m=(H-24)/2，透明 24×24 命中格 + 居中 14px
+内联 SVG，字形仅悬停显示）与挪位后的 DOM 原按钮（原位重绘、悬停居中 SVG 背景
+字形，仍是应用自己的可点击
+控件）。唯一区别是控件来源。装饰兜底不带 hover 字形。overlay pitch 恒为 24
+（H 只改变视图高度与 m）；挪 DOM pitch 同样固定（尺寸 14 + 间距 10 = 24）——
+如需调整请覆盖下方的 `:root` 变量，而非走 manifest 配置。overlay 提示语取宿主侧 en/zh 表（应用 locale `zh` 前缀选中中文），可用
+`tooltip-*` 配置逐个覆盖（空=语言默认值）。
 
 ## Manifest（须满足宿主 schema）
 
@@ -107,18 +120,29 @@ cargo run -p tronhawk-package --bin tronhawk-pack -- pack <path-to-plugin> traff
 
 | 键 | 类型 | 默认值 | 含义 |
 | --- | ---- | ------ | ---- |
-| `button-size` | number | 12 | 红绿灯按钮直径（px，对应 `--th-traffic-size`） |
-| `traffic-gap` | number | 8 | 按钮间距（px，对应 `--th-traffic-gap`） |
-| `left-offset` | number | 12 | 按钮组左偏移（px，对应 `--th-traffic-left`） |
+| `left-offset` | number | 0 | 相对左调整量 L（CSS px/DIP，钳制 0-256，宿主 overlay 几何，视图原点 x = m+L 其中 m=(H-24)/2） |
+| `region-height` | number | 30 | Overlay 区域高度 H（CSS px/DIP，钳制 30-64，宿主 overlay 几何，视图为 72×H，格 24×24，m=(H-24)/2） |
+| `tooltip-close` | string | "" | 关闭提示覆盖（空=语言默认值） |
+| `tooltip-minimize` | string | "" | 最小化提示覆盖（空=语言默认值） |
+| `tooltip-maximize` | string | "" | 最大化提示覆盖（空=语言默认值） |
+| `tooltip-restore` | string | "" | 还原提示覆盖（空=语言默认值） |
 | `decorative-fallback-lights` | boolean | true | 未检测到窗口控件时显示装饰性兜底灯（装饰性，不可点击） |
 | `functional-fallback-controls` | boolean | true | 未检测到窗口控件时优先挂载功能性宿主 overlay（functional host overlay，可点击） |
 
-也可以直接覆盖 CSS 变量：
+宿主 overlay 几何为受限声明式：宿主只从 plan 配置快照读取
+`region-height`（H）与 `left-offset`（L）（manifest 默认值叠加已存值）。所有值均为
+DIP/CSS px——宿主不做像素换算、不读 `devicePixelRatio`/`scaleFactor`、不测量显示器，
+也无自动显示适配（物理像素严禁直接取作 CSS px：DPR=2 时 14 CSS = 28 物理）。
+唯一数值表：d=14、p=24、格 24×24、内距 5、gap 10、H=30（30..64）、
+m=(H-24)/2、默认 bounds (3,0,72,30)。视觉灯恒为 14px；配置变更的 plan revision 会销毁旧视图
+按新几何重建；几何冲突的共存 owner 在 `mount()`（无参、不做 DOM 测量）直接失败。
+
+DOM 路径几何固定（d=14、pitch 24、gap 10）；如需调整请直接覆盖 CSS 变量：
 
 ```css
 :root {
-  --th-traffic-size: 12px;
-  --th-traffic-gap: 8px;
+  --th-traffic-size: 14px;
+  --th-traffic-gap: 10px;
   --th-traffic-left: 12px;
   --th-traffic-top: 12px;
 }

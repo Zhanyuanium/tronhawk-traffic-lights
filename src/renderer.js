@@ -31,10 +31,10 @@ const WINDOW_CONTROL_SELECTOR =
 
 const DECORATIVE_FALLBACK_CSS =
   'html::before{content:"";position:fixed;left:var(--th-traffic-left,12px);' +
-  "top:var(--th-traffic-top,12px);width:var(--th-traffic-size,12px);" +
-  "height:var(--th-traffic-size,12px);border-radius:50%;background:#ff5f57;" +
-  "box-shadow:calc(var(--th-traffic-size,12px) + var(--th-traffic-gap,8px)) 0 0 #febc2e," +
-  "calc((var(--th-traffic-size,12px) + var(--th-traffic-gap,8px)) * 2) 0 0 #28c840;" +
+  "top:var(--th-traffic-top,12px);width:var(--th-traffic-size,14px);" +
+  "height:var(--th-traffic-size,14px);border-radius:50%;background:#ff5f57;" +
+  "box-shadow:calc(var(--th-traffic-size,14px) + var(--th-traffic-gap,10px)) 0 0 #febc2e," +
+  "calc((var(--th-traffic-size,14px) + var(--th-traffic-gap,10px)) * 2) 0 0 #28c840;" +
   "pointer-events:none;z-index:9999}" +
   "@media (forced-colors:active){html::before{display:none !important}}";
 

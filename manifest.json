@@ -10,20 +10,35 @@
   },
   "permissions": ["renderer.css", "renderer.dom", "renderer.script", "electron.windowControls"],
   "config": {
-    "button-size": {
-      "type": "number",
-      "default": 12,
-      "label": "Traffic light button diameter (px)"
-    },
-    "traffic-gap": {
-      "type": "number",
-      "default": 8,
-      "label": "Gap between traffic light buttons (px)"
-    },
     "left-offset": {
       "type": "number",
-      "default": 12,
-      "label": "Left offset of the traffic light group (px)"
+      "default": 0,
+      "label": "Left adjustment added to margin, DIP (0-256)"
+    },
+    "region-height": {
+      "type": "number",
+      "default": 30,
+      "label": "Overlay region height in DIP (30-64)"
+    },
+    "tooltip-close": {
+      "type": "string",
+      "default": "",
+      "label": "Close tooltip override (empty = language default)"
+    },
+    "tooltip-minimize": {
+      "type": "string",
+      "default": "",
+      "label": "Minimize tooltip override (empty = language default)"
+    },
+    "tooltip-maximize": {
+      "type": "string",
+      "default": "",
+      "label": "Maximize tooltip override (empty = language default)"
+    },
+    "tooltip-restore": {
+      "type": "string",
+      "default": "",
+      "label": "Restore tooltip override (empty = language default)"
     },
     "decorative-fallback-lights": {
       "type": "boolean",

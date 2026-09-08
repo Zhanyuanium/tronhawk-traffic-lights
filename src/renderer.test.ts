@@ -466,6 +466,7 @@ function makeOverlayCtx(opts: {
   let disconnectCalls = 0;
   let mountCalls = 0;
   let unmountCalls = 0;
+  const mountArgs: unknown[][] = [];
   let insertSeq = 0;
 
   const base = createMockRendererContext({
@@ -513,8 +514,9 @@ function makeOverlayCtx(opts: {
   // Old SDK mock has no windowControls; attach it for overlay tests.
   // oxlint-disable-next-line no-explicit-any
   (base as any).windowControls = {
-    mount: async () => {
+    mount: async (...args: unknown[]) => {
       mountCalls += 1;
+      mountArgs.push(args);
       if (opts.mountImpl) await opts.mountImpl();
     },
     unmount: async () => {
@@ -530,6 +532,7 @@ function makeOverlayCtx(opts: {
     observes,
     disconnects: () => disconnectCalls,
     mounts: () => mountCalls,
+    mountArgs: () => mountArgs,
     unmounts: () => unmountCalls,
   };
 }
@@ -654,6 +657,10 @@ describe("functional fallback (host overlay) behavior", () => {
     await plugin.activate(t.ctx);
     try {
       expect(t.mounts()).toBe(1);
+      // Declarative contract: mount takes no arguments (geometry comes from
+      // the host-side plan config snapshot, never from the renderer).
+      expect(t.mountArgs().length).toBe(1);
+      expect(t.mountArgs()[0].length).toBe(0);
       expect(t.unmounts()).toBe(0);
       // Observer stays for late-appearing controls.
       expect(t.observes.length).toBe(1);

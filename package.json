@@ -2,7 +2,7 @@
   "name": "tronhawk-plugin-traffic-lights",
   "version": "0.1.0",
   "private": true,
-  "description": "Move self-drawn top-right window controls to top-left macOS traffic-lights style buttons (CSS-only reposition + repaint).",
+  "description": "Move self-drawn top-right window controls to top-left macOS traffic-lights style buttons (reposition + repaint, host overlay fallback).",
   "scripts": {
     "build": "tronhawk build .",
     "typecheck": "tsc --noEmit",
