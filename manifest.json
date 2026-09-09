@@ -10,15 +10,15 @@
   },
   "permissions": ["renderer.css", "renderer.dom", "renderer.script", "electron.windowControls"],
   "config": {
-    "left-offset": {
+    "overlay-left-offset": {
       "type": "number",
       "default": 0,
-      "label": "Left adjustment added to margin, DIP (0-256)"
+      "label": "Overlay left adjustment L, DIP (0-256)"
     },
-    "region-height": {
+    "overlay-region-height": {
       "type": "number",
       "default": 30,
-      "label": "Overlay region height in DIP (30-64)"
+      "label": "Overlay region height H, DIP (30-64)"
     },
     "tooltip-close": {
       "type": "string",
@@ -45,10 +45,10 @@
       "default": true,
       "label": "Decorative fallback lights (decorative, not clickable)"
     },
-    "functional-fallback-controls": {
+    "host-overlay-fallback": {
       "type": "boolean",
       "default": true,
-      "label": "Functional fallback (functional host overlay)"
+      "label": "Host overlay fallback (functional host overlay, clickable)"
     }
   }
 }

@@ -1,12 +1,15 @@
 # TronHawk Traffic Lights
 
 Move the target Electron app's self-drawn top-right window controls to
-top-left macOS traffic-lights style buttons.
+top-left macOS traffic-lights style buttons — or, when no original controls
+are detected, show a host-hosted overlay instead.
 
-Strategy is **CSS move + repaint**: the original buttons stay in the DOM and
-keep their click behaviour — only their position and appearance change.
-The plugin is fully sandbox-compliant: no DOM/Node/Electron direct access, no
-arbitrary page JS bridge, no Electron private APIs.
+Two paths, one visual language: **CSS move + repaint** when the original
+buttons are detected (they stay in the DOM and keep their click behaviour —
+only position and appearance change), else a **host overlay fallback**
+(`electron.windowControls`, fully clickable). The plugin is fully
+sandbox-compliant: no DOM/Node/Electron direct access, no arbitrary page JS
+bridge, no Electron private APIs.
 
 ## Install
 
@@ -51,10 +54,10 @@ mismatch hard-fails with install guidance — there is no TypeScript fallback
 packer. Exit codes are a stable contract: 0 success, 1 authoritative
 rejection (the message on stderr names the cause), 2 CLI usage error.
 
-`tronhawk build` bundles the `src/` entries to `dist/` (the source
-`manifest.json` keeps `entry.renderer: "src/renderer.js"` so the build can
-find the TypeScript source; `src/renderer.ts` is the type source,
-`src/renderer.js` the CommonJS runtime file). `tronhawk pack` then stages
+`tronhawk build` bundles the `src/` entry to `dist/` (the manifest keeps
+`entry.renderer: "src/renderer.js"`; that CommonJS file is the single source,
+typed inline with JSDoc and checked by `tsc --noEmit` via allowJs/checkJs).
+`tronhawk pack` then stages
 `manifest.json` + `dist/*.js` + `style.css` and runs a single authoritative
 Rust `pack` (temp file + same-crate round-trip + atomic rename inside Rust),
 so the packed manifest points at the built artifact `dist/renderer.js`.
@@ -72,18 +75,16 @@ Then load `traffic-lights.thx` in the TronHawk Manager.
 ## Permissions (minimal)
 
 - `renderer.css` — inject `style.css` (static CSS data via
-  `webContents.insertCSS`) plus one small runtime padding patch and, when
-  enabled, one short-lived decorative fallback rule.
+  `webContents.insertCSS`) plus, when enabled, one short-lived decorative
+  fallback rule.
 - `renderer.dom` — snapshot `query` probe for the window-control group
   (diagnostics + fallback detection), plus a short-lived `observe`
   subscription only while a fallback is active. The observer
   disconnects as soon as real controls appear or on deactivate; snapshots
   lag live DOM by up to one poll interval (~500ms).
-- `renderer.script` — one title-preserving `ctx.script.setDocumentTitle`
-  call (reads the `<title>` snapshot and writes it back, so the visible
-  title never changes). Required because Core only keeps `plugin.renderer`
-  in the execution plan when grants include `renderer.script` (or
-  `runtime.unsafe`); without it the renderer never runs.
+- `renderer.script` — execution-gate permission only: Core keeps
+  `plugin.renderer` in the execution plan only when grants include
+  `renderer.script` (or `runtime.unsafe`); the renderer makes no script call.
 - `electron.windowControls` — host-hosted functional overlay
   (`ctx.windowControls.mount` / `unmount`, fixed-style traffic lights bound
   to the current window: minimize / toggle-maximize / close). Only used
@@ -125,8 +126,8 @@ Overlay tooltips come from a host-side en/zh table selected by the app locale
 Notes: no top-level `description` key (the host manifest schema is
 `deny_unknown_fields`); `entry.renderer` must be CommonJS
 (`module.exports = { activate, deactivate }`) because the QuickJS sandbox
-runs `vm.evalCode` — `src/renderer.js` is the runtime entry, `src/renderer.ts`
-is the type source.
+runs `vm.evalCode` — `src/renderer.js` is the single source (CommonJS,
+JSDoc-typed, checked by `tsc --noEmit`).
 
 ## Config
 
@@ -134,17 +135,17 @@ Set in the Manager settings form (defaults from `manifest.json`):
 
 | Key | Type | Default | Meaning |
 | --- | ---- | ------- | ------- |
-| `left-offset` | number | 0 | Left adjustment L in CSS px/DIP, clamped 0-256 (host overlay geometry; view origin x = m+L where m=(H-24)/2) |
-| `region-height` | number | 30 | Overlay region height H in CSS px/DIP, clamped 30-64 (host overlay geometry; view is 72×H, cells 24×24 at m=(H-24)/2) |
+| `overlay-left-offset` | number | 0 | Overlay left adjustment L in CSS px/DIP, clamped 0-256 (host overlay geometry; view origin x = m+L where m=(H-24)/2) |
+| `overlay-region-height` | number | 30 | Overlay region height H in CSS px/DIP, clamped 30-64 (host overlay geometry; view is 72×H, cells 24×24 at m=(H-24)/2) |
 | `tooltip-close` | string | "" | Close tooltip override (empty = language default) |
 | `tooltip-minimize` | string | "" | Minimize tooltip override (empty = language default) |
 | `tooltip-maximize` | string | "" | Maximize tooltip override (empty = language default) |
 | `tooltip-restore` | string | "" | Restore tooltip override (empty = language default) |
 | `decorative-fallback-lights` | boolean | true | Show decorative fallback lights when no window controls are detected (decorative, not clickable) |
-| `functional-fallback-controls` | boolean | true | Prefer the functional host overlay when no window controls are detected (functional host overlay, clickable) |
+| `host-overlay-fallback` | boolean | true | Prefer the host overlay when no window controls are detected (functional host overlay, clickable) |
 
 Host overlay geometry is declarative and restricted: the host reads only
-`region-height` (H) and `left-offset` (L) from the plan config snapshot (manifest
+`overlay-region-height` (H) and `overlay-left-offset` (L) from the plan config snapshot (manifest
 defaults overlaid with stored values). All values are DIP/CSS px — the host never
 converts pixels, reads `devicePixelRatio`/`scaleFactor`, or measures the
 display, and there is no automatic display adaptation (physical pixels are never
@@ -153,6 +154,9 @@ taken as CSS px: 14 CSS = 28 physical at DPR=2). Sole table: d=14, p=24, cell
 lights are a constant 14px; a plan revision with different values destroys the
 old view and rebuilds, and co-owners with conflicting geometries fail closed on
 `mount()` (which takes no arguments and performs no DOM measurement).
+Custom overlay geometry needs the matching host update that reads the new
+key names; until then the host falls back to its own defaults (H=30, L=0),
+so the overlay still shows with default geometry.
 
 DOM-path geometry is fixed (d=14, pitch 24, gap 10, 24x24 cells, inset 5);
 customize it by overriding the CSS variables directly (`size` = lamp
@@ -171,7 +175,7 @@ lamp anchor; hit cells stay adjacent with container gap 0):
 
 ## Compatibility limits
 
-- Pure CSS relocation: original button functions are preserved, but the
+- CSS move path: original button functions are preserved, but the
   mapping of close/minimize/maximize relies on `aria-label`/`title` semantics
   first and positional fallback (`[min, max, close]` → `[close, min, max]`)
   second. Unusual orders may need a custom rule.
@@ -180,7 +184,7 @@ lamp anchor; hit cells stay adjacent with container gap 0):
   `[titlebar__controls]`, `.caption-buttons` / `.captionButtons`,
   `.frameless-controls` / `.header-controls`) plus native macOS traffic-light groups. Detection
   uses a single `query` for that group; unknown self-drawn structures that
-  match none of these selectors fall back to the decorative lights below
+  match none of these selectors fall back to the host overlay below
   instead of moving anything.
 - Decorative fallback (default on, `decorative-fallback-lights`): when no
   real control group is detected, the renderer inserts a single temporary
@@ -194,21 +198,21 @@ lamp anchor; hit cells stay adjacent with container gap 0):
   `html::before` may conflict with apps or user styles that also use
   `html::before`; set `decorative-fallback-lights` to `false` if that
   happens.
-- Functional fallback (default on, `functional-fallback-controls`): when no
+- Host overlay fallback (default on, `host-overlay-fallback`): when no
   real control group is detected, the renderer first asks the host to mount
   its functional overlay (`ctx.windowControls.mount`, requires the
   `electron.windowControls` permission). The overlay is host-hosted with a
   fixed style and fully clickable (minimize / toggle-maximize / close the
   current window). Downgrade order is strict: real controls (CSS move, no
-  JS fallback) → functional host overlay → decorative lights (not
+  JS fallback) → host overlay → decorative lights (not
   clickable) → nothing. The overlay and the decorative lights are never
   shown together: a successful `mount()` skips the decorative insert, a
   rejected `mount()` (or a host without the API) falls back to the
   decorative tier, and late-appearing real controls unmount the overlay
   (then the CSS move path takes over). `deactivate` always disconnects the
   observer first, then unmounts the overlay, then removes the decorative
-  and padding CSS — each step independent, never rejecting. Set
-  `functional-fallback-controls` to `false` to skip the overlay and go
+  CSS — each step independent, never rejecting. Set
+  `host-overlay-fallback` to `false` to skip the overlay and go
   straight to the decorative tier.
 - If the app already renders native macOS traffic lights, the plugin leaves
   them alone to avoid duplicates.

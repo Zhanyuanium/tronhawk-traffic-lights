@@ -1,11 +1,12 @@
 # TronHawk 红绿灯按钮
 
 将目标 Electron 应用自绘的右上角窗口控件搬移到左上角，改为 macOS
-红绿灯式按钮。
+红绿灯式按钮；若未检测到原控件，则显示宿主托管的 overlay。
 
-实现思路是 **CSS 搬移 + 重绘**：原按钮保留在 DOM 中，点击功能不变，仅改变
-位置与外观。插件完全遵守沙盒契约：无 DOM/Node/Electron 直访，无任意页面
-JS bridge，不依赖 Electron 私有 API。
+两条路径、同一套视觉语言：检测到原按钮时做 **CSS 搬移 + 重绘**（原按钮
+保留在 DOM 中，点击功能不变，仅改变位置与外观），否则走**宿主 overlay
+兜底**（`electron.windowControls`，可点击）。插件完全遵守沙盒契约：无
+DOM/Node/Electron 直访，无任意页面 JS bridge，不依赖 Electron 私有 API。
 
 ## 安装
 
@@ -48,9 +49,9 @@ Release 下载对应 OS/arch 的产物）。CLI 的 `tronhawk.engineVersion` 必
 Exit code 是稳定契约：0 成功，1 权威拒绝（stderr 会点名原因），2 CLI
 用法错误。
 
-`tronhawk build` 把 `src/` 入口打包到 `dist/`（源码 `manifest.json` 保留
-`entry.renderer: "src/renderer.js"`，构建才能找到 TypeScript 源；
-`src/renderer.ts` 是类型源，`src/renderer.js` 是 CommonJS 运行时文件）。
+`tronhawk build` 把 `src/` 入口打包到 `dist/`（`manifest.json` 保留
+`entry.renderer: "src/renderer.js"`；该 CommonJS 文件是唯一源码，内联 JSDoc
+类型并经 `tsc --noEmit`（allowJs/checkJs）检查）。
 `tronhawk pack` 接着做最小 staging（`manifest.json` + `dist/*.js` +
 `style.css`）并只调一次权威 Rust `pack`（temp 文件 + 同 crate round-trip
 + 原子 rename 全在 Rust 内），因此包内 manifest 指向构建产物
@@ -68,15 +69,14 @@ cargo run -p tronhawk-package --bin tronhawk-pack -- pack <path-to-plugin> traff
 ## 权限（最小按需）
 
 - `renderer.css` —— 注入 `style.css`（经 `webContents.insertCSS` 的静态 CSS
-  data）及一小段运行时 padding 补丁，开启时再加一段短期装饰兜底规则。
+  data），开启时再加一段短期装饰兜底规则。
 - `renderer.dom` —— 用快照式 `query` 探测窗口控件组（诊断日志 + 兜底
   检测），仅在兜底生效期间保留一个短期 `observe` 订阅。真实控件一
   出现或插件停用即断开；快照相对实时 DOM 最多滞后一个轮询间隔（约
   500ms）。
-- `renderer.script` —— 仅做一次标题保持式 `ctx.script.setDocumentTitle`
-  调用（读 `<title>` 快照再写回，可见标题不变）。必须声明，否则 Core 仅在
-  grants 含 `renderer.script`（或 `runtime.unsafe`）时才保留
-  `plugin.renderer`，renderer 将根本不会执行。
+- `renderer.script` —— 仅为执行门禁：仅当 grants 含 `renderer.script`
+  （或 `runtime.unsafe`）时 Core 才在 execution plan 中保留
+  `plugin.renderer`；renderer 本身不做任何 script 调用。
 - `electron.windowControls` —— 宿主托管的功能性 overlay
  （`ctx.windowControls.mount` / `unmount`，固定样式红绿灯，绑定当前窗口
  的最小化 / 最大化切换 / 关闭）。仅在未检测到原控件时使用，与装饰灯
@@ -112,7 +112,8 @@ pitch 24（gap 10、24×24 格、内距 5）、悬停 ×/–/+ 矢量字形（14
 注意：顶层不允许 `description` 键（宿主 manifest schema 为
 `deny_unknown_fields`）；`entry.renderer` 必须是 CommonJS
 （`module.exports = { activate, deactivate }`），因为 QuickJS 沙盒跑的是
-`vm.evalCode` —— `src/renderer.js` 是运行时入口，`src/renderer.ts` 是类型源。
+`vm.evalCode` —— `src/renderer.js` 是唯一源码（CommonJS，内联 JSDoc 类型，
+经 `tsc --noEmit` 检查）。
 
 ## 配置项
 
@@ -120,22 +121,24 @@ pitch 24（gap 10、24×24 格、内距 5）、悬停 ×/–/+ 矢量字形（14
 
 | 键 | 类型 | 默认值 | 含义 |
 | --- | ---- | ------ | ---- |
-| `left-offset` | number | 0 | 相对左调整量 L（CSS px/DIP，钳制 0-256，宿主 overlay 几何，视图原点 x = m+L 其中 m=(H-24)/2） |
-| `region-height` | number | 30 | Overlay 区域高度 H（CSS px/DIP，钳制 30-64，宿主 overlay 几何，视图为 72×H，格 24×24，m=(H-24)/2） |
+| `overlay-left-offset` | number | 0 | Overlay 左调整量 L（CSS px/DIP，钳制 0-256，宿主 overlay 几何，视图原点 x = m+L 其中 m=(H-24)/2） |
+| `overlay-region-height` | number | 30 | Overlay 区域高度 H（CSS px/DIP，钳制 30-64，宿主 overlay 几何，视图为 72×H，格 24×24，m=(H-24)/2） |
 | `tooltip-close` | string | "" | 关闭提示覆盖（空=语言默认值） |
 | `tooltip-minimize` | string | "" | 最小化提示覆盖（空=语言默认值） |
 | `tooltip-maximize` | string | "" | 最大化提示覆盖（空=语言默认值） |
 | `tooltip-restore` | string | "" | 还原提示覆盖（空=语言默认值） |
 | `decorative-fallback-lights` | boolean | true | 未检测到窗口控件时显示装饰性兜底灯（装饰性，不可点击） |
-| `functional-fallback-controls` | boolean | true | 未检测到窗口控件时优先挂载功能性宿主 overlay（functional host overlay，可点击） |
+| `host-overlay-fallback` | boolean | true | 未检测到窗口控件时优先挂载宿主 overlay（functional host overlay，可点击） |
 
 宿主 overlay 几何为受限声明式：宿主只从 plan 配置快照读取
-`region-height`（H）与 `left-offset`（L）（manifest 默认值叠加已存值）。所有值均为
+`overlay-region-height`（H）与 `overlay-left-offset`（L）（manifest 默认值叠加已存值）。所有值均为
 DIP/CSS px——宿主不做像素换算、不读 `devicePixelRatio`/`scaleFactor`、不测量显示器，
 也无自动显示适配（物理像素严禁直接取作 CSS px：DPR=2 时 14 CSS = 28 物理）。
 唯一数值表：d=14、p=24、格 24×24、内距 5、gap 10、H=30（30..64）、
 m=(H-24)/2、默认 bounds (3,0,72,30)。视觉灯恒为 14px；配置变更的 plan revision 会销毁旧视图
 按新几何重建；几何冲突的共存 owner 在 `mount()`（无参、不做 DOM 测量）直接失败。
+自定义 overlay 几何需要读取新键名的宿主配套更新；在那之前宿主回退到自有
+默认值（H=30、L=0），overlay 仍以默认几何显示。
 
 DOM 路径几何固定（d=14、pitch 24、gap 10、24×24 格、内距 5）；如需调整请直接覆盖
 CSS 变量（`size` = 灯直径、`gap` = 相邻灯视觉边缘间距、`left`/`top` = 视觉灯锚点；
@@ -153,14 +156,14 @@ CSS 变量（`size` = 灯直径、`gap` = 相邻灯视觉边缘间距、`left`/`
 
 ## 兼容性限制
 
-- 纯 CSS 搬移：原按钮功能保留；关闭/最小化/最大化的映射优先使用
+- CSS 搬移路径：原按钮功能保留；关闭/最小化/最大化的映射优先使用
   `aria-label`/`title` 语义，其次使用位置兜底（`[最小化, 最大化, 关闭]` →
   `[关闭, 最小化, 最大化]`）。特殊排序可能需要自定义规则。
 - 已覆盖通用 Electron 控件组（`.window-controls*`、`.window-control`、
   `[winButtons]`、`[p-titlebar__controls]` / `[titlebar__controls]`、
   `.caption-buttons` / `.captionButtons`、`.frameless-controls` / `.header-controls`）及原生
   macOS 红绿灯组。检测只用一次 `query` 匹配该组合；完全命中不了的自绘
-  结构不会被搬移，而是走下面的装饰兜底。
+  结构不会被搬移，而是走下面的宿主 overlay。
 - 装饰性兜底（默认开启，`decorative-fallback-lights`）：未检测到真实控
   件组时，renderer 会插入一段临时的单个 `html::before` 三灯
   （`pointer-events: none`，复用 `--th-traffic-size` /
@@ -170,17 +173,17 @@ CSS 变量（`size` = 灯直径、`gap` = 相邻灯视觉边缘间距、`left`/`
   待晚到的真实控件（轮询延迟最多约 500ms），一旦出现立即移除兜底。单
   个 `html::before` 可能与同样使用 `html::before` 的应用或用户样式冲
   突，冲突时请将 `decorative-fallback-lights` 设为 `false`。
-- 功能性兜底（默认开启，`functional-fallback-controls`）：未检测到真实
+- 宿主 overlay 兜底（默认开启，`host-overlay-fallback`）：未检测到真实
   控件组时，renderer 会先请求宿主挂载功能性 overlay
  （`ctx.windowControls.mount`，需 `electron.windowControls` 权限）。
   该 overlay 由宿主托管、样式固定、可点击（最小化 / 最大化切换 / 关闭
-  当前窗口）。降级顺序严格为：真实控件（CSS 搬移，无 JS 兜底）→ 功能性
-  宿主 overlay → 装饰灯（不可点击）→ 无兜底。overlay 与装饰灯永不同时
+  当前窗口）。降级顺序严格为：真实控件（CSS 搬移，无 JS 兜底）→ 宿主
+  overlay → 装饰灯（不可点击）→ 无兜底。overlay 与装饰灯永不同时
   显示：`mount()` 成功则跳过装饰灯；`mount()` 被拒（或宿主无该 API）则
   回落到装饰档；晚到的真实控件会先 unmount overlay 再转搬移路。
-  `deactivate` 永远先断 observer，再 unmount overlay，再清装饰与 padding
+  `deactivate` 永远先断 observer，再 unmount overlay，再清装饰
   CSS，各步互不跳过、永不 reject。如需跳过 overlay 直走装饰档，请将
-  `functional-fallback-controls` 设为 `false`。
+  `host-overlay-fallback` 设为 `false`。
 - 若应用本身已渲染原生 macOS 红绿灯，插件会主动避让，避免重复渲染。
 - 标题栏保持 `-webkit-app-region: drag`，按钮使用 `no-drag` 以保证可点击；
   hover 显示 `×/–/+` 字形；保留 `focus-visible` 无障碍轮廓；已做

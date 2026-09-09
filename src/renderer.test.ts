@@ -1,4 +1,4 @@
-// Smoke + decorative-fallback tests for the traffic-lights renderer (bun test, no host).
+// Renderer tests for the traffic-lights single source (bun test, no host).
 import { beforeEach, describe, expect, test } from "bun:test";
 
 import { createMockRendererContext } from "@tronhawk/sdk";
@@ -124,40 +124,43 @@ describe("manifest decorative-fallback-lights", () => {
     expect(label.toLowerCase()).toContain("not clickable");
   });
 
-  test("renderer sources mirror the same contract", async () => {
-    const ts = await readText("./renderer.ts");
-    const js = await readText("./renderer.js");
-    for (const src of [ts, js]) {
-      expect(src).toContain("fallbackCssId");
-      expect(src).toContain("controlsObserved");
-      expect(src).toContain("disconnectControlObserver");
-      expect(src).toContain("removeFallbackCss");
-      expect(src).toContain("WINDOW_CONTROL_SELECTOR");
-      expect(src).toContain("DECORATIVE_FALLBACK_CSS");
-      expect(src).toContain('ctx.config.get("decorative-fallback-lights") !== false');
-      expect(src).not.toContain("WINDOW_CONTROL_SELECTORS");
-      // Closed matrix: every moved container is detected (header was the gap).
-      expect(src).toContain(".header-controls");
-      expect(src).toContain(".frameless-controls");
-      expect(src).toContain("windowControls");
+  test("single source carries the detection + fallback contract", async () => {
+    // Single source (src/renderer.js): no TS twin remains. Locks the
+    // behavior-relevant contract only — detection matrix, config keys, and
+    // the absence of the removed title/padding paths — never internals.
+    const src = await readText("./renderer.js");
+    expect(src).toContain("WINDOW_CONTROL_SELECTOR");
+    expect(src).toContain("DECORATIVE_FALLBACK_CSS");
+    expect(src).toContain('ctx.config.get("decorative-fallback-lights") !== false');
+    expect(src).toContain('ctx.config.get("host-overlay-fallback") !== false');
+    // Breaking rename: no compat shim, no stale old-key reference.
+    expect(src).not.toContain("functional-fallback");
+    // Removed paths stay removed: no title read-back, no runtime padding.
+    expect(src).not.toContain("setDocumentTitle");
+    expect(src).not.toContain("patchCssId");
+    expect(src).not.toContain("--th-traffic-reserved");
+    expect(src).not.toContain('query("title")');
+    // Closed detection matrix: every moved container is detected, and the
+    // selector stays a single comma-separated container-only list.
+    for (const token of [
+      ".window-controls",
+      ".window-controls-container",
+      ".window-control",
+      "winButtons",
+      "windowControls",
+      "p-titlebar__controls",
+      "titlebar__controls",
+      ".caption-buttons",
+      ".captionButtons",
+      ".frameless-controls",
+      ".header-controls",
+      ".titlebar-button-container.mod-right",
+    ]) {
+      expect(src).toContain(token);
     }
-    // TS/JS selectors must stay identical (single matrix, two files).
-    const pick = (src: string): string | null => {
-      const block = src.slice(src.indexOf("WINDOW_CONTROL_SELECTOR"));
-      const end = block.indexOf(";");
-      if (end < 0) return null;
-      const decl = block.slice(0, end);
-      const parts: string[] = [];
-      const re = /"([^"]*)"|'([^']*)'/g;
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(decl)) !== null) {
-        parts.push(m[1] ?? m[2] ?? "");
-      }
-      return parts.length > 0 ? parts.join("") : null;
-    };
-    expect(pick(ts)).not.toBeNull();
-    expect(pick(js)).not.toBeNull();
-    expect(pick(ts)).toBe(pick(js));
+    expect(src).toContain('[class*="winButtons" i]');
+    expect(src).not.toContain('[class*="winButton" i]');
+    expect(src).not.toContain("WINDOW_CONTROL_SELECTORS");
   });
 
   test("style.css adds no permanent html::before/body::before rule", async () => {
@@ -173,17 +176,14 @@ describe("decorative fallback behavior", () => {
   test("config false disables fallback: no observe, no fallback insert", async () => {
     const t = makeTrackingCtx({
       configValue: false,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
     try {
       expect(t.observes.length).toBe(0);
       expect(t.inserts.filter((c) => c.includes("pointer-events:none")).length).toBe(0);
-      // Padding patch is still applied.
-      expect(t.inserts.filter((c) => c.includes("--th-traffic-reserved")).length).toBe(1);
+      // No runtime CSS at all: the static style.css reserve covers titles.
+      expect(t.inserts.length).toBe(0);
     } finally {
       await plugin.deactivate(t.ctx);
     }
@@ -192,10 +192,7 @@ describe("decorative fallback behavior", () => {
   test("config undefined is treated as enabled", async () => {
     const t = makeTrackingCtx({
       configValue: undefined,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
     try {
@@ -209,16 +206,14 @@ describe("decorative fallback behavior", () => {
   test("hit does not insert fallback and does not observe", async () => {
     const t = makeTrackingCtx({
       configValue: true,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return hitElement();
-      },
+      queryImpl: async () => hitElement(),
     });
     await plugin.activate(t.ctx);
     try {
       expect(t.observes.length).toBe(0);
       expect(t.inserts.filter((c) => c.includes("pointer-events:none")).length).toBe(0);
-      expect(t.inserts.filter((c) => c.includes("--th-traffic-reserved")).length).toBe(1);
+      // Move path needs no runtime CSS: the static style.css does the move.
+      expect(t.inserts.length).toBe(0);
     } finally {
       await plugin.deactivate(t.ctx);
     }
@@ -227,10 +222,7 @@ describe("decorative fallback behavior", () => {
   test("miss registers observe once and inserts fallback once with pointer-events:none", async () => {
     const t = makeTrackingCtx({
       configValue: true,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
     try {
@@ -255,7 +247,7 @@ describe("decorative fallback behavior", () => {
       expect(css).not.toContain('content:"+"');
       expect(css.replace(/forced-colors\s*:\s*active/g, "")).not.toContain(":active");
       // Single-shot detection: exactly one controls query (title query is separate).
-      const controlQueries = t.queries.filter((s) => !s.startsWith("observe:") && s !== "title");
+      const controlQueries = t.queries.filter((s) => !s.startsWith("observe:"));
       expect(controlQueries.length).toBe(1);
       // Single comma-separated selector covering real control groups, no pure .titlebar token.
       const selector = controlQueries[0];
@@ -273,10 +265,10 @@ describe("decorative fallback behavior", () => {
         ".frameless-controls",
         ".header-controls",
         ".traffic-lights",
-        ".titlebar-button-container.mod-right",
-      ]) {
-        expect(selector).toContain(token);
-      }
+      ".titlebar-button-container.mod-right",
+    ]) {
+      expect(selector).toContain(token);
+    }
       // Closed detection: only the precise Obsidian container moves, never
       // bare buttons; Discord moves div[winButtons] only, never a bare
       // singular winButton outside it (CSS D tier still repaints the
@@ -306,7 +298,6 @@ describe("decorative fallback behavior", () => {
     const t = makeTrackingCtx({
       configValue: true,
       queryImpl: async (selector) => {
-        if (selector === "title") return null;
         if (selector.includes("titlebar-button-container.mod-right")) {
           return hitElement();
         }
@@ -318,11 +309,9 @@ describe("decorative fallback behavior", () => {
       // Hit path: real Obsidian controls found, no fallback, no observer.
       expect(t.observes.length).toBe(0);
       expect(t.inserts.filter((c) => c.includes("pointer-events:none")).length).toBe(0);
-      // Padding patch still applied and reserves Obsidian left space.
-      const patches = t.inserts.filter((c) => c.includes("--th-traffic-reserved"));
-      expect(patches.length).toBe(1);
-      expect(patches[0]).toContain(".titlebar-button-container.mod-left");
-      const controlQueries = t.queries.filter((s) => !s.startsWith("observe:") && s !== "title");
+      // Move path needs no runtime CSS: the static style.css reserve covers titles.
+      expect(t.inserts.length).toBe(0);
+      const controlQueries = t.queries.filter((s) => !s.startsWith("observe:"));
       expect(controlQueries.length).toBe(1);
       const selector = controlQueries[0];
       expect(selector).toContain("titlebar-button-container.mod-right");
@@ -353,10 +342,7 @@ describe("decorative fallback behavior", () => {
   test("observe callback removes fallback, disconnects once, returns undefined", async () => {
     const t = makeTrackingCtx({
       configValue: true,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
     try {
@@ -372,7 +358,7 @@ describe("decorative fallback behavior", () => {
       // Repeat-safe: second deactivate does not duplicate removes.
       const removesAfterCallback = t.removes.length;
       await plugin.deactivate(t.ctx);
-      // deactivate removes the padding patch too; fallback id must appear exactly once.
+      // The fallback id must appear exactly once.
       const fallbackId = "mock-css-1";
       expect(t.removes.filter((id) => id === fallbackId).length).toBe(1);
       expect(t.removes.length).toBeGreaterThanOrEqual(removesAfterCallback);
@@ -398,10 +384,7 @@ describe("decorative fallback behavior", () => {
       css: {
         insert: async (css: string) => {
           inserts.push(css);
-          if (css.includes("pointer-events:none")) {
-            return await gate;
-          }
-          return "mock-padding";
+          return await gate;
         },
         remove: async (id: string) => {
           removes.push(id);
@@ -443,19 +426,16 @@ describe("decorative fallback behavior", () => {
     }
   });
 
-  test("deactivate cleans both patches and removes each id once", async () => {
+  test("deactivate cleans the fallback patch and removes its id once", async () => {
     const t = makeTrackingCtx({
       configValue: true,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
-    expect(t.inserts.length).toBe(2);
+    expect(t.inserts.length).toBe(1);
     const removesBefore = t.removes.length;
     await plugin.deactivate(t.ctx);
-    expect(t.removes.length).toBe(removesBefore + 2);
+    expect(t.removes.length).toBe(removesBefore + 1);
     expect(new Set(t.removes).size).toBe(t.removes.length);
     const countAfterFirst = t.removes.length;
     await plugin.deactivate(t.ctx);
@@ -465,8 +445,7 @@ describe("decorative fallback behavior", () => {
   test("query throw fails closed: no fallback, no observe", async () => {
     const t = makeTrackingCtx({
       configValue: true,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
+      queryImpl: async () => {
         throw new Error("bad selector");
       },
     });
@@ -483,10 +462,7 @@ describe("decorative fallback behavior", () => {
     const t = makeTrackingCtx({
       configValue: true,
       observeThrows: true,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
     try {
@@ -501,10 +477,7 @@ describe("decorative fallback behavior", () => {
     const t = makeTrackingCtx({
       configValue: true,
       insertThrowsForFallback: true,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
     try {
@@ -519,17 +492,13 @@ describe("decorative fallback behavior", () => {
   test("remove failure does not block the remaining cleanup", async () => {
     const t = makeTrackingCtx({
       configValue: true,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      queryImpl: async () => null,
       removeShouldThrow: (id) => id === "mock-css-1",
     });
     await plugin.activate(t.ctx);
-    // mock-css-1 is the fallback insert, mock-css-2 the padding patch.
+    // mock-css-1 is the fallback insert (the only runtime insert now).
     await expect(plugin.deactivate(t.ctx)).resolves.toBeUndefined();
     expect(t.removes).toContain("mock-css-1");
-    expect(t.removes).toContain("mock-css-2");
     // State is cleared: a second deactivate performs no further removes.
     const n = t.removes.length;
     await plugin.deactivate(t.ctx);
@@ -539,7 +508,7 @@ describe("decorative fallback behavior", () => {
 
 function makeOverlayCtx(opts: {
   decorativeValue?: unknown;
-  functionalValue?: unknown;
+  overlayValue?: unknown;
   mountImpl?: () => Promise<void>;
   unmountImpl?: () => Promise<void>;
   queryImpl?: (selector: string) => Promise<unknown>;
@@ -560,7 +529,7 @@ function makeOverlayCtx(opts: {
     config: {
       get: (key: string) => {
         if (key === "decorative-fallback-lights") return opts.decorativeValue;
-        if (key === "functional-fallback-controls") return opts.functionalValue;
+        if (key === "host-overlay-fallback") return opts.overlayValue;
         return undefined;
       },
       set: () => {},
@@ -625,7 +594,7 @@ function makeOverlayCtx(opts: {
 
 function makeNoOverlayCtx(opts: {
   decorativeValue?: unknown;
-  functionalValue?: unknown;
+  overlayValue?: unknown;
   queryImpl?: (selector: string) => Promise<unknown>;
 } = {}) {
   const inserts: string[] = [];
@@ -638,7 +607,7 @@ function makeNoOverlayCtx(opts: {
     config: {
       get: (key: string) => {
         if (key === "decorative-fallback-lights") return opts.decorativeValue;
-        if (key === "functional-fallback-controls") return opts.functionalValue;
+        if (key === "host-overlay-fallback") return opts.overlayValue;
         return undefined;
       },
       set: () => {},
@@ -684,7 +653,7 @@ function makeNoOverlayCtx(opts: {
   };
 }
 
-describe("manifest functional-fallback-controls", () => {
+describe("manifest host-overlay-fallback", () => {
   test("declares electron.windowControls permission", async () => {
     const manifest = await readJson("../manifest.json");
     const permissions = manifest["permissions"] as unknown[];
@@ -694,10 +663,10 @@ describe("manifest functional-fallback-controls", () => {
     expect(permissions).toContain("renderer.script");
   });
 
-  test("declares functional-fallback-controls boolean default true with functional host overlay label", async () => {
+  test("declares host-overlay-fallback boolean default true with functional host overlay label", async () => {
     const manifest = await readJson("../manifest.json");
     const config = manifest["config"] as Record<string, Record<string, unknown>>;
-    const field = config["functional-fallback-controls"];
+    const field = config["host-overlay-fallback"];
     expect(field).toBeDefined();
     expect(field["type"]).toBe("boolean");
     expect(field["default"]).toBe(true);
@@ -705,28 +674,19 @@ describe("manifest functional-fallback-controls", () => {
     expect(label).toContain("functional host overlay");
   });
 
-  test("renderer sources mirror the functional contract without any abuse", async () => {
-    const ts = await readText("./renderer.ts");
-    const js = await readText("./renderer.js");
-    for (const src of [ts, js]) {
-      expect(src).toContain('ctx.config.get("functional-fallback-controls") !== false');
-      expect(src).toContain("windowControls");
-      expect(src).toContain("overlayMounted");
-      expect(src).toContain("mountPending");
-      expect(src).toContain("cancelPendingMount");
-      expect(src).toContain("observeRegistered");
-      expect(src).toContain("unmountOverlay");
-      expect(src).toContain("getWindowControls");
-      expect(src).toContain("mount()");
-      expect(src).toContain("unmount()");
-    }
-    expect(ts).toContain("HostWindowControls");
-    expect(ts).toContain("RendererContextWithOverlay");
-    expect(ts).not.toContain("as any");
-    expect(ts).not.toContain(": any");
-    // Runtime must check existence before calling.
-    expect(ts).toContain('typeof mount !== "function"');
-    expect(ts).toContain('typeof unmount !== "function"');
+  test("single source carries the host-overlay contract", async () => {
+    // Single source (src/renderer.js): locks the behavior-relevant overlay
+    // contract only — new config key, mount/unmount calls, and the runtime
+    // shape check — never internals.
+    const src = await readText("./renderer.js");
+    expect(src).toContain('ctx.config.get("host-overlay-fallback") !== false');
+    expect(src).toContain("windowControls");
+    expect(src).toContain("mount()");
+    expect(src).toContain("unmount()");
+    expect(src).not.toContain("functional-fallback-controls");
+    // Runtime checks the host shape before calling.
+    expect(src).toContain('typeof mount !== "function"');
+    expect(src).toContain('typeof unmount !== "function"');
   });
 });
 
@@ -734,11 +694,8 @@ describe("functional fallback (host overlay) behavior", () => {
   test("mount priority: miss mounts overlay and skips decorative lights", async () => {
     const t = makeOverlayCtx({
       decorativeValue: true,
-      functionalValue: true,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      overlayValue: true,
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
     try {
@@ -752,8 +709,8 @@ describe("functional fallback (host overlay) behavior", () => {
       expect(t.observes.length).toBe(1);
       // Never both: no decorative insert when the overlay is up.
       expect(t.inserts.filter((c) => c.includes("pointer-events:none")).length).toBe(0);
-      // Padding patch still applied.
-      expect(t.inserts.filter((c) => c.includes("--th-traffic-reserved")).length).toBe(1);
+      // Overlay path needs no runtime CSS at all.
+      expect(t.inserts.length).toBe(0);
     } finally {
       await plugin.deactivate(t.ctx);
     }
@@ -762,14 +719,11 @@ describe("functional fallback (host overlay) behavior", () => {
   test("mount reject falls back to decorative lights", async () => {
     const t = makeOverlayCtx({
       decorativeValue: true,
-      functionalValue: true,
+      overlayValue: true,
       mountImpl: async () => {
         throw new Error("mount denied");
       },
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
     try {
@@ -785,11 +739,8 @@ describe("functional fallback (host overlay) behavior", () => {
   test("functional disabled never mounts even when the host API exists", async () => {
     const t = makeOverlayCtx({
       decorativeValue: true,
-      functionalValue: false,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      overlayValue: false,
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
     try {
@@ -804,11 +755,8 @@ describe("functional fallback (host overlay) behavior", () => {
   test("config undefined enables the functional overlay", async () => {
     const t = makeOverlayCtx({
       decorativeValue: true,
-      functionalValue: undefined,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      overlayValue: undefined,
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
     try {
@@ -822,11 +770,8 @@ describe("functional fallback (host overlay) behavior", () => {
   test("hit never mounts and never inserts decorative lights", async () => {
     const t = makeOverlayCtx({
       decorativeValue: true,
-      functionalValue: true,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return hitElement();
-      },
+      overlayValue: true,
+      queryImpl: async () => hitElement(),
     });
     await plugin.activate(t.ctx);
     try {
@@ -842,11 +787,8 @@ describe("functional fallback (host overlay) behavior", () => {
   test("old host without windowControls falls back to decorative lights", async () => {
     const t = makeNoOverlayCtx({
       decorativeValue: true,
-      functionalValue: true,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      overlayValue: true,
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
     try {
@@ -860,11 +802,8 @@ describe("functional fallback (host overlay) behavior", () => {
   test("late controls unmount the overlay, disconnect once, return undefined", async () => {
     const t = makeOverlayCtx({
       decorativeValue: true,
-      functionalValue: true,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      overlayValue: true,
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
     try {
@@ -890,30 +829,26 @@ describe("functional fallback (host overlay) behavior", () => {
   test("deactivate unmounts the overlay once and never rejects", async () => {
     const t = makeOverlayCtx({
       decorativeValue: true,
-      functionalValue: true,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      overlayValue: true,
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
     expect(t.mounts()).toBe(1);
     await expect(plugin.deactivate(t.ctx)).resolves.toBeUndefined();
     expect(t.unmounts()).toBe(1);
-    // Decorative was never inserted, padding was removed; unmount not repeated.
+    // Decorative was never inserted and no runtime CSS was needed; unmount not repeated.
     expect(t.inserts.filter((c) => c.includes("pointer-events:none")).length).toBe(0);
     const n = t.unmounts();
     await expect(plugin.deactivate(t.ctx)).resolves.toBeUndefined();
     expect(t.unmounts()).toBe(n);
   });
 
-  test("deactivate still unmounts when decorative cleanup throws", async () => {
+  test("deactivate still disconnects when overlay unmount throws", async () => {
     const inserts: string[] = [];
     const removes: string[] = [];
     let mountCalls = 0;
     let unmountCalls = 0;
     let disconnectCalls = 0;
-    let insertSeq = 0;
     const ctx = createMockRendererContext({
       // oxlint-disable-next-line no-explicit-any
       config: { get: () => true, set: () => {} } as any,
@@ -921,13 +856,11 @@ describe("functional fallback (host overlay) behavior", () => {
       css: {
         insert: async (css: string) => {
           inserts.push(css);
-          insertSeq += 1;
-          return `mock-css-${insertSeq}`;
+          return "mock-css-fallback";
         },
         remove: async (id: string) => {
           removes.push(id);
-          // Fail the padding removal (second insert), not the overlay path.
-          if (id === "mock-css-1") throw new Error("remove failed");
+          throw new Error("remove failed");
         },
         // oxlint-disable-next-line no-explicit-any
       } as any,
@@ -950,27 +883,27 @@ describe("functional fallback (host overlay) behavior", () => {
       },
       unmount: async () => {
         unmountCalls += 1;
+        throw new Error("unmount failed");
       },
     };
     await plugin.activate(ctx);
     expect(mountCalls).toBe(1);
-    // Decorative skipped (overlay up), so mock-css-1 is the padding patch.
+    // Overlay up means decorative skipped and no runtime CSS was inserted.
+    expect(inserts.length).toBe(0);
+    // Failures only warn: deactivate still resolves and still disconnects.
     await expect(plugin.deactivate(ctx)).resolves.toBeUndefined();
     expect(unmountCalls).toBe(1);
     expect(disconnectCalls).toBe(1);
-    expect(removes).toContain("mock-css-1");
+    expect(removes.length).toBe(0);
     await plugin.deactivate(ctx);
   });
 
   test("observe failure fails closed: no overlay mount and no decorative insert", async () => {
     const t = makeOverlayCtx({
       decorativeValue: true,
-      functionalValue: true,
+      overlayValue: true,
       observeThrows: true,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      queryImpl: async () => null,
     });
     await plugin.activate(t.ctx);
     try {
@@ -982,8 +915,8 @@ describe("functional fallback (host overlay) behavior", () => {
       expect(t.unmounts()).toBe(0);
       // Decorative tier fails closed too (existing behavior).
       expect(t.inserts.filter((c) => c.includes("pointer-events:none")).length).toBe(0);
-      // Padding patch still applied.
-      expect(t.inserts.filter((c) => c.includes("--th-traffic-reserved")).length).toBe(1);
+      // No runtime CSS at all without the observer.
+      expect(t.inserts.length).toBe(0);
     } finally {
       await plugin.deactivate(t.ctx);
     }
@@ -996,12 +929,9 @@ describe("functional fallback (host overlay) behavior", () => {
     });
     const t = makeOverlayCtx({
       decorativeValue: true,
-      functionalValue: true,
+      overlayValue: true,
       mountImpl: () => mountGate,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      queryImpl: async () => null,
     });
     const activating = plugin.activate(t.ctx);
     // Wait until the observer is registered and the mount is in flight.
@@ -1041,12 +971,9 @@ describe("functional fallback (host overlay) behavior", () => {
     });
     const t = makeOverlayCtx({
       decorativeValue: true,
-      functionalValue: true,
+      overlayValue: true,
       mountImpl: () => mountGate,
-      queryImpl: async (selector) => {
-        if (selector === "title") return null;
-        return null;
-      },
+      queryImpl: async () => null,
     });
     const activating = plugin.activate(t.ctx);
     // Wait until the observer is registered and the mount is in flight.
@@ -1341,10 +1268,10 @@ describe("traffic hit-box contract (24x24 cells, 14px lamps, host-overlay parity
     // alone. Detection (renderer selector) still lists every cluster.
     const css = await readText("../style.css");
     const stripped = stripCssComments(css);
-    const ts = await readText("./renderer.ts");
-    const js = await readText("./renderer.js");
-    const pickSelector = (src: string): string => {
-      const block = src.slice(src.indexOf("WINDOW_CONTROL_SELECTOR"));
+    // Single source: detection lives in src/renderer.js only.
+    const src = await readText("./renderer.js");
+    const pickSelector = (text: string): string => {
+      const block = text.slice(text.indexOf("WINDOW_CONTROL_SELECTOR"));
       const end = block.indexOf(";");
       if (end < 0) throw new Error("WINDOW_CONTROL_SELECTOR not found");
       const decl = block.slice(0, end);
@@ -1358,9 +1285,8 @@ describe("traffic hit-box contract (24x24 cells, 14px lamps, host-overlay parity
       if (parts.length === 0) throw new Error("WINDOW_CONTROL_SELECTOR not found");
       return parts.join("");
     };
-    const tsSelector = pickSelector(ts);
-    const jsSelector = pickSelector(js);
-    expect(tsSelector).toBe(jsSelector);
+    const selector = pickSelector(src);
+    expect(selector.length).toBeGreaterThan(0);
 
     // Detection covers every moved container (closed matrix: precise
     // container tokens only, never bare buttons).
@@ -1379,14 +1305,14 @@ describe("traffic hit-box contract (24x24 cells, 14px lamps, host-overlay parity
       ".header-controls",
       ".titlebar-button-container.mod-right",
     ]) {
-      expect(tsSelector).toContain(token);
+      expect(selector).toContain(token);
     }
     // Bare buttons must not suppress the overlay: Obsidian moves only the
     // precise container, Discord moves div[winButtons] only.
-    expect(tsSelector).not.toContain('[class*="winButton" i]');
-    expect(tsSelector).not.toContain(".titlebar-button.mod-minimize");
-    expect(tsSelector).not.toContain(".titlebar-button.mod-maximize");
-    expect(tsSelector).not.toContain(".titlebar-button.mod-close");
+    expect(selector).not.toContain('[class*="winButton" i]');
+    expect(selector).not.toContain(".titlebar-button.mod-minimize");
+    expect(selector).not.toContain(".titlebar-button.mod-maximize");
+    expect(selector).not.toContain(".titlebar-button.mod-close");
 
     // Folded C tier token shared by every structure layer.
     const cTier =
@@ -1715,14 +1641,14 @@ describe("traffic hit-box contract (24x24 cells, 14px lamps, host-overlay parity
         `.titlebar-button-container.mod-right>:nth-child(${n}):not([aria-label*="Close"i]):not([aria-label*="关闭"i]):not(.mod-close):not(:where(`,
       );
     }
-    // Cascade contract: S rules stay before P (rule-block order preserved),
-    // so with guards excluding semantics, plain Windows order still maps
-    // nth1->2 / nth2->3 / nth3->1 while semantic clusters fall to S colors.
-    // (Order markers live in comments: read the raw CSS, not the stripped.)
-    const raw = await readText("../style.css");
-    const sIdx = raw.indexOf('button:is([aria-label*="Close" i],');
-    const pReorderIdx = raw.indexOf("P reorder");
-    const pPaintIdx = raw.indexOf("P paints");
+    // Cascade contract: S rules stay before P in the stylesheet, so with
+    // guards excluding semantics, plain Windows order still maps nth1->2 /
+    // nth2->3 / nth3->1 while semantic clusters fall to S colors. Anchored
+    // on selectors (not comment markers): S color fold, P reorder fold,
+    // P paint fold.
+    const sIdx = stripped.indexOf('button:is([aria-label*="Close" i],');
+    const pReorderIdx = stripped.indexOf('> :nth-child(1):not([aria-label*="');
+    const pPaintIdx = stripped.indexOf("> :nth-child(3):last-child:not(:where(");
     expect(sIdx).toBeGreaterThanOrEqual(0);
     expect(pReorderIdx).toBeGreaterThanOrEqual(0);
     expect(pPaintIdx).toBeGreaterThanOrEqual(0);

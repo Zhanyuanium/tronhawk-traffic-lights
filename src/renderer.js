@@ -1,27 +1,44 @@
 /**
  * TronHawk plugin: Traffic Lights — renderer (CommonJS, QuickJS sandbox).
  *
- * Authored alongside `src/renderer.ts` (type source); this `.js` file is what
- * `manifest.json` points at because the runtime's `vm.evalCode` only accepts
- * CommonJS (`module.exports = { activate, deactivate }`).
+ * Single source, typed inline with JSDoc (`tsc --noEmit` via allowJs/checkJs).
+ * `manifest.json` points here because `vm.evalCode` only accepts CommonJS.
  *
- * Downgrade order on a full miss: real controls (CSS move) -> functional
- * host overlay (`ctx.windowControls.mount`, clickable) -> decorative
- * fallback (`html::before`, pointer-events none, not clickable) -> nothing.
- * The overlay and the decorative fallback are never shown together.
+ * CSS move when original controls are detected (static `style.css`, no JS
+ * fallback), else host overlay (clickable) -> decorative `html::before`
+ * fallback (not clickable) -> nothing. Overlay and fallback never co-show.
  *
- * Sandbox contract: never use `console.*`, only log via `ctx.logger` with
- * plain strings, and never return a non-undefined value from event callbacks
- * (the `observe` callback below returns `undefined` synchronously).
+ * Sandbox: no `console.*` (only `ctx.logger` strings); event callbacks
+ * return `undefined`.
+ *
+ * NOTE: `renderer.script` is kept as the renderer execution gate (Core drops
+ * the renderer payload without it or `runtime.unsafe`); no script call is
+ * needed. Overlay geometry (`overlay-left-offset`/`overlay-region-height`) is
+ * read host-side, never here — custom values need the matching host update.
  */
 
-let patchCssId = null;
+/**
+ * @typedef {import("@tronhawk/sdk").RendererContext} RendererContext
+ * @typedef {RendererContext & { windowControls?: unknown }} RendererContextWithOverlay
+ * @typedef {{ mount(): Promise<void>, unmount(): Promise<void> }} HostWindowControls
+ */
+
+/** Decorative fallback CSS id (single `html::before`, not clickable). Null when absent. @type {string | null} */
 let fallbackCssId = null;
+/** Disconnect function for the short-lived controls observer. Null when absent. @type {(() => void) | null} */
 let controlObserverDisconnect = null;
+/** Set by the observer callback when real controls appear. */
 let controlsObserved = false;
+/** True while the host overlay is mounted (never together with the fallback). */
 let overlayMounted = false;
+/** True while a `windowControls.mount()` is in flight. */
 let mountPending = false;
 
+/**
+ * Real window-control groups only (single comma-separated selector).
+ * Container tokens only: a bare `.titlebar` would always match, and bare
+ * buttons outside a moved container must not suppress the overlay.
+ */
 const WINDOW_CONTROL_SELECTOR =
   ".window-controls,.window-controls-container,.window-control," +
   '[class*="window-controls" i],[class*="windowControls" i],' +
@@ -31,6 +48,11 @@ const WINDOW_CONTROL_SELECTOR =
   ".traffic-lights,.mac-traffic-lights,.macos-traffic-lights,.titlebar-traffic-lights," +
   ".titlebar-button-container.mod-right";
 
+/**
+ * Decorative fallback: a single `html::before` trio (`background` +
+ * `box-shadow`), `pointer-events: none`, never interactive, hidden under
+ * forced-colors mode.
+ */
 const DECORATIVE_FALLBACK_CSS =
   'html::before{content:"";position:fixed;left:var(--th-traffic-left,12px);' +
   "top:var(--th-traffic-top,12px);width:var(--th-traffic-size,14px);" +
@@ -40,20 +62,33 @@ const DECORATIVE_FALLBACK_CSS =
   "pointer-events:none;z-index:9999}" +
   "@media (forced-colors:active){html::before{display:none !important}}";
 
+/**
+ * Return the host overlay API when present and well-formed, else null.
+ * Must be called before every mount/unmount (never assume existence).
+ * @param {RendererContext} ctx
+ * @returns {HostWindowControls | null}
+ */
 function getWindowControls(ctx) {
-  const candidate = ctx && ctx.windowControls;
+  const candidate = /** @type {RendererContextWithOverlay} */ (ctx).windowControls;
   if (candidate === null || candidate === undefined) {
     return null;
   }
   if (typeof candidate !== "object") {
     return null;
   }
-  if (typeof candidate.mount !== "function" || typeof candidate.unmount !== "function") {
+  const mount = /** @type {{ mount?: unknown }} */ (candidate).mount;
+  const unmount = /** @type {{ unmount?: unknown }} */ (candidate).unmount;
+  if (typeof mount !== "function" || typeof unmount !== "function") {
     return null;
   }
-  return candidate;
+  return /** @type {HostWindowControls} */ (candidate);
 }
 
+/**
+ * Remove the fallback CSS if present. Repeat-safe (second call is a no-op).
+ * @param {RendererContext} ctx
+ * @returns {Promise<void>}
+ */
 async function removeFallbackCss(ctx) {
   const id = fallbackCssId;
   fallbackCssId = null;
@@ -66,6 +101,9 @@ async function removeFallbackCss(ctx) {
   }
 }
 
+/**
+ * Disconnect the controls observer if present. Clears the ref before calling.
+ */
 function disconnectControlObserver() {
   const disconnect = controlObserverDisconnect;
   controlObserverDisconnect = null;
@@ -78,6 +116,13 @@ function disconnectControlObserver() {
   }
 }
 
+/**
+ * Unmount the overlay when mounted. Flag-gated so a fresh
+ * activate/deactivate without a prior mount never touches the host.
+ * Never rejects: failures only warn, state is always cleared.
+ * @param {RendererContext} ctx
+ * @returns {Promise<void>}
+ */
 async function unmountOverlay(ctx) {
   if (!overlayMounted) {
     return;
@@ -94,6 +139,13 @@ async function unmountOverlay(ctx) {
   }
 }
 
+/**
+ * Cancel an in-flight `windowControls.mount()` by issuing a host `unmount()`
+ * while still pending, so a late mount success never sticks around next to
+ * real controls (or as residue after deactivate). Best-effort, never rejects.
+ * @param {RendererContext} ctx
+ * @returns {Promise<void>}
+ */
 async function cancelPendingMount(ctx) {
   if (!mountPending) {
     return;
@@ -110,6 +162,15 @@ async function cancelPendingMount(ctx) {
   }
 }
 
+/**
+ * Activate the plugin. Downgrade order on a full miss (no original controls):
+ * real controls (CSS move, no JS fallback) -> host overlay
+ * (`ctx.windowControls.mount`, clickable) -> decorative fallback
+ * (`html::before`, pointer-events none, not clickable) -> nothing.
+ * The overlay and the decorative fallback are never shown together.
+ * @param {RendererContext} ctx
+ * @returns {Promise<void>}
+ */
 async function activate(ctx) {
   ctx.logger.info("[traffic-lights] activate: moving controls to top-left");
   controlsObserved = false;
@@ -118,14 +179,14 @@ async function activate(ctx) {
   overlayMounted = false;
 
   let decorativeEnabled = true;
-  let functionalEnabled = true;
+  let overlayEnabled = true;
   try {
     decorativeEnabled = ctx.config.get("decorative-fallback-lights") !== false;
-    functionalEnabled = ctx.config.get("functional-fallback-controls") !== false;
+    overlayEnabled = ctx.config.get("host-overlay-fallback") !== false;
   } catch (_e) {
     ctx.logger.warn("[traffic-lights] config read failed");
     decorativeEnabled = false;
-    functionalEnabled = false;
+    overlayEnabled = false;
   }
 
   let controlsFound = false;
@@ -146,7 +207,7 @@ async function activate(ctx) {
   } else if (!queryFailed) {
     let observeRegistered = false;
     const overlayAvailable =
-      functionalEnabled && getWindowControls(ctx) !== null;
+      overlayEnabled && getWindowControls(ctx) !== null;
     if (decorativeEnabled || overlayAvailable) {
       try {
         const disconnect = ctx.dom.observe(WINDOW_CONTROL_SELECTOR, (_node) => {
@@ -167,7 +228,7 @@ async function activate(ctx) {
     }
 
     let overlayActive = false;
-    if (functionalEnabled && observeRegistered) {
+    if (overlayEnabled && observeRegistered) {
       const wc = getWindowControls(ctx);
       if (wc !== null) {
         mountPending = true;
@@ -213,52 +274,16 @@ async function activate(ctx) {
       }
     }
   }
-
-  // Keep the visible title unchanged while exercising `renderer.script`
-  // (required so the `renderer.script` grant is actually used): read the
-  // <title> snapshot and write it back. Skipped when absent so we never
-  // blank the title on apps without one.
-  try {
-    const titleEl = await ctx.dom.query("title");
-    const text = titleEl && titleEl.text;
-    if (typeof text === "string" && text.length > 0) {
-      try {
-        ctx.script.setDocumentTitle(text.slice(0, 256));
-      } catch (_e) {
-        ctx.logger.warn("[traffic-lights] setDocumentTitle failed");
-      }
-    }
-  } catch (_e) {
-    ctx.logger.warn("[traffic-lights] title query failed");
-  }
-
-  // Small dynamic patch: reserve left padding so titles/tabs do not slide
-  // under the relocated lights. Static repaint lives in style.css (data).
-  // Obsidian (verified 1.13.7, mod-windows is-hidden-frameless): div.titlebar
-  // (fixed strip) > div.titlebar-inner (flex, width:100%) > div.titlebar-text
-  // (absolute, centered, hidden in this mode) plus
-  // div.titlebar-button-container.mod-left (absolute left:0, back/forward are
-  // display:none here) and .mod-right (absolute right:0, the moved cluster).
-  // This patch reserves the titlebar subtree only (custom-frame mode, where
-  // the opaque bar holds visible content). The visible top-left tab icons in
-  // hidden-frameless mode live OUTSIDE .titlebar in
-  // .workspace-tabs.mod-top-left-space .workspace-tab-header-container, which
-  // style.css section 6 pads instead. The left container is absolute left:0
-  // so it uses margin-left instead of padding-left.
-  try {
-    patchCssId = await ctx.css.insert(
-      ".titlebar .window-title{padding-left:var(--th-traffic-reserved,76px)}" +
-        ".titlebar{padding-left:var(--th-traffic-reserved,76px)}" +
-        ".titlebar-inner{padding-left:var(--th-traffic-reserved,76px)}" +
-        ".titlebar-text{padding-left:var(--th-traffic-reserved,76px)}" +
-        ".titlebar-button-container.mod-left{margin-left:var(--th-traffic-reserved,76px)}",
-    );
-  } catch (_e) {
-    ctx.logger.warn("[traffic-lights] dynamic CSS patch failed");
-    patchCssId = null;
-  }
 }
 
+/**
+ * Deactivate the plugin: disconnect the observer first, then cancel any
+ * pending mount and unmount the overlay, then clean up the fallback patch
+ * independently (one failure never skips the other).
+ * Clears all module state and never rejects.
+ * @param {RendererContext} ctx
+ * @returns {Promise<void>}
+ */
 async function deactivate(ctx) {
   try {
     try {
@@ -280,17 +305,7 @@ async function deactivate(ctx) {
       await removeFallbackCss(ctx);
     } catch (_e) {
       ctx.logger.warn("[traffic-lights] fallback CSS cleanup failed");
-    }
-    try {
-      const id = patchCssId;
-      patchCssId = null;
-      if (id !== null) {
-        await ctx.css.remove(id);
-      }
-    } catch (_e) {
-      ctx.logger.warn("[traffic-lights] dynamic CSS cleanup failed");
     } finally {
-      patchCssId = null;
       fallbackCssId = null;
       controlObserverDisconnect = null;
       controlsObserved = false;
