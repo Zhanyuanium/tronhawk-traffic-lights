@@ -11,5 +11,5 @@ out/
 # Logs
 *.log
 
-# Local deepwork progress state
-.slim/deepwork/
+# Local agent workspace (deepwork state, worktrees, lane metadata)
+.slim/
