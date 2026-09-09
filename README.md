@@ -154,8 +154,10 @@ lights are a constant 14px; a plan revision with different values destroys the
 old view and rebuilds, and co-owners with conflicting geometries fail closed on
 `mount()` (which takes no arguments and performs no DOM measurement).
 
-DOM-path geometry is fixed (d=14, pitch 24, gap 10); customize it by
-overriding the CSS variables directly:
+DOM-path geometry is fixed (d=14, pitch 24, gap 10, 24x24 cells, inset 5);
+customize it by overriding the CSS variables directly (`size` = lamp
+diameter, `gap` = adjacent-lamp visual edge spacing, `left`/`top` = visual
+lamp anchor; hit cells stay adjacent with container gap 0):
 
 ```css
 :root {
@@ -163,6 +165,7 @@ overriding the CSS variables directly:
   --th-traffic-gap: 10px;
   --th-traffic-left: 12px;
   --th-traffic-top: 12px;
+  /* derived, do not override: --th-traffic-cell-size (size+gap), --th-traffic-inset (gap/2) */
 }
 ```
 
@@ -175,7 +178,7 @@ overriding the CSS variables directly:
 - Covers generic Electron control groups (`.window-controls*`,
   `.window-control`, `[winButtons]`, `[p-titlebar__controls]` /
   `[titlebar__controls]`, `.caption-buttons` / `.captionButtons`,
-  `.frameless-controls`) plus native macOS traffic-light groups. Detection
+  `.frameless-controls` / `.header-controls`) plus native macOS traffic-light groups. Detection
   uses a single `query` for that group; unknown self-drawn structures that
   match none of these selectors fall back to the decorative lights below
   instead of moving anything.

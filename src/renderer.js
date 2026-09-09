@@ -24,10 +24,12 @@ let mountPending = false;
 
 const WINDOW_CONTROL_SELECTOR =
   ".window-controls,.window-controls-container,.window-control," +
-  '[class*="winButtons" i],[class*="winButton" i],' +
+  '[class*="window-controls" i],[class*="windowControls" i],' +
+  '[class*="winButtons" i],' +
   '[class*="p-titlebar__controls" i],[class*="titlebar__controls" i],' +
-  ".caption-buttons,.captionButtons,.frameless-controls," +
-  ".traffic-lights,.mac-traffic-lights,.macos-traffic-lights,.titlebar-traffic-lights";
+  ".caption-buttons,.captionButtons,.frameless-controls,.header-controls," +
+  ".traffic-lights,.mac-traffic-lights,.macos-traffic-lights,.titlebar-traffic-lights," +
+  ".titlebar-button-container.mod-right";
 
 const DECORATIVE_FALLBACK_CSS =
   'html::before{content:"";position:fixed;left:var(--th-traffic-left,12px);' +
@@ -232,9 +234,24 @@ async function activate(ctx) {
 
   // Small dynamic patch: reserve left padding so titles/tabs do not slide
   // under the relocated lights. Static repaint lives in style.css (data).
+  // Obsidian (verified 1.13.7, mod-windows is-hidden-frameless): div.titlebar
+  // (fixed strip) > div.titlebar-inner (flex, width:100%) > div.titlebar-text
+  // (absolute, centered, hidden in this mode) plus
+  // div.titlebar-button-container.mod-left (absolute left:0, back/forward are
+  // display:none here) and .mod-right (absolute right:0, the moved cluster).
+  // This patch reserves the titlebar subtree only (custom-frame mode, where
+  // the opaque bar holds visible content). The visible top-left tab icons in
+  // hidden-frameless mode live OUTSIDE .titlebar in
+  // .workspace-tabs.mod-top-left-space .workspace-tab-header-container, which
+  // style.css section 6 pads instead. The left container is absolute left:0
+  // so it uses margin-left instead of padding-left.
   try {
     patchCssId = await ctx.css.insert(
-      ".titlebar .window-title{padding-left:var(--th-traffic-reserved,76px)}",
+      ".titlebar .window-title{padding-left:var(--th-traffic-reserved,76px)}" +
+        ".titlebar{padding-left:var(--th-traffic-reserved,76px)}" +
+        ".titlebar-inner{padding-left:var(--th-traffic-reserved,76px)}" +
+        ".titlebar-text{padding-left:var(--th-traffic-reserved,76px)}" +
+        ".titlebar-button-container.mod-left{margin-left:var(--th-traffic-reserved,76px)}",
     );
   } catch (_e) {
     ctx.logger.warn("[traffic-lights] dynamic CSS patch failed");

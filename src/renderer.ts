@@ -96,14 +96,22 @@ async function cancelPendingMount(ctx: RendererContext): Promise<void> {
 /**
  * Real window-control groups only (single comma-separated selector).
  * Pure `.titlebar` containers are intentionally excluded: they always match
- * and would suppress the fallback even when no buttons exist.
+ * and would suppress the fallback even when no buttons exist. Only the
+ * precise `.titlebar-button-container.mod-right` is moved for Obsidian: bare
+ * `.titlebar-button.mod-*` buttons outside it must not suppress the overlay.
+ * Discord moves `div[class*="winButtons" i]` only: a bare singular
+ * `[class*="winButton" i]` outside that container is repainted by CSS but
+ * must not suppress the overlay on its own (CSS D tier still repaints the
+ * container's child buttons).
  */
 const WINDOW_CONTROL_SELECTOR: string =
   ".window-controls,.window-controls-container,.window-control," +
-  '[class*="winButtons" i],[class*="winButton" i],' +
+  '[class*="window-controls" i],[class*="windowControls" i],' +
+  '[class*="winButtons" i],' +
   '[class*="p-titlebar__controls" i],[class*="titlebar__controls" i],' +
-  ".caption-buttons,.captionButtons,.frameless-controls," +
-  ".traffic-lights,.mac-traffic-lights,.macos-traffic-lights,.titlebar-traffic-lights";
+  ".caption-buttons,.captionButtons,.frameless-controls,.header-controls," +
+  ".traffic-lights,.mac-traffic-lights,.macos-traffic-lights,.titlebar-traffic-lights," +
+  ".titlebar-button-container.mod-right";
 
 /**
  * Decorative fallback: a single `html::before` trio rendered via
@@ -331,9 +339,24 @@ export async function activate(ctx: RendererContext): Promise<void> {
 
   // Small dynamic patch: reserve left padding so titles/tabs do not slide
   // under the relocated lights. Static repaint lives in style.css (data).
+  // Obsidian (verified 1.13.7, mod-windows is-hidden-frameless): div.titlebar
+  // (fixed strip) > div.titlebar-inner (flex, width:100%) > div.titlebar-text
+  // (absolute, centered, hidden in this mode) plus
+  // div.titlebar-button-container.mod-left (absolute left:0, back/forward are
+  // display:none here) and .mod-right (absolute right:0, the moved cluster).
+  // This patch reserves the titlebar subtree only (custom-frame mode, where
+  // the opaque bar holds visible content). The visible top-left tab icons in
+  // hidden-frameless mode live OUTSIDE .titlebar in
+  // .workspace-tabs.mod-top-left-space .workspace-tab-header-container, which
+  // style.css section 6 pads instead. The left container is absolute left:0
+  // so it uses margin-left instead of padding-left.
   try {
     patchCssId = await ctx.css.insert(
-      ".titlebar .window-title{padding-left:var(--th-traffic-reserved,76px)}",
+      ".titlebar .window-title{padding-left:var(--th-traffic-reserved,76px)}" +
+        ".titlebar{padding-left:var(--th-traffic-reserved,76px)}" +
+        ".titlebar-inner{padding-left:var(--th-traffic-reserved,76px)}" +
+        ".titlebar-text{padding-left:var(--th-traffic-reserved,76px)}" +
+        ".titlebar-button-container.mod-left{margin-left:var(--th-traffic-reserved,76px)}",
     );
   } catch {
     ctx.logger.warn("[traffic-lights] dynamic CSS patch failed");

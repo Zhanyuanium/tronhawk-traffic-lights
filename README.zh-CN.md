@@ -137,7 +137,9 @@ DIP/CSS px——宿主不做像素换算、不读 `devicePixelRatio`/`scaleFacto
 m=(H-24)/2、默认 bounds (3,0,72,30)。视觉灯恒为 14px；配置变更的 plan revision 会销毁旧视图
 按新几何重建；几何冲突的共存 owner 在 `mount()`（无参、不做 DOM 测量）直接失败。
 
-DOM 路径几何固定（d=14、pitch 24、gap 10）；如需调整请直接覆盖 CSS 变量：
+DOM 路径几何固定（d=14、pitch 24、gap 10、24×24 格、内距 5）；如需调整请直接覆盖
+CSS 变量（`size` = 灯直径、`gap` = 相邻灯视觉边缘间距、`left`/`top` = 视觉灯锚点；
+命中格始终相接，容器 gap 为 0）：
 
 ```css
 :root {
@@ -145,6 +147,7 @@ DOM 路径几何固定（d=14、pitch 24、gap 10）；如需调整请直接覆�
   --th-traffic-gap: 10px;
   --th-traffic-left: 12px;
   --th-traffic-top: 12px;
+  /* 派生变量请勿直接覆盖：--th-traffic-cell-size（size+gap）、--th-traffic-inset（gap/2） */
 }
 ```
 
@@ -155,7 +158,7 @@ DOM 路径几何固定（d=14、pitch 24、gap 10）；如需调整请直接覆�
   `[关闭, 最小化, 最大化]`）。特殊排序可能需要自定义规则。
 - 已覆盖通用 Electron 控件组（`.window-controls*`、`.window-control`、
   `[winButtons]`、`[p-titlebar__controls]` / `[titlebar__controls]`、
-  `.caption-buttons` / `.captionButtons`、`.frameless-controls`）及原生
+  `.caption-buttons` / `.captionButtons`、`.frameless-controls` / `.header-controls`）及原生
   macOS 红绿灯组。检测只用一次 `query` 匹配该组合；完全命中不了的自绘
   结构不会被搬移，而是走下面的装饰兜底。
 - 装饰性兜底（默认开启，`decorative-fallback-lights`）：未检测到真实控
