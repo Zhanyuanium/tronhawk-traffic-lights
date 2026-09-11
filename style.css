@@ -1,11 +1,4 @@
-/* TronHawk Traffic Lights — style.css (static DATA for insertCSS, not JS).
- * Move + repaint: living buttons move top-left as macOS lights, never hidden.
- * Tiers (order preserved): C roots (0,1,0) one :is(); B1 button (0,1,1) /
- * B2 [role=button] (0,2,0) separate; D folds winButtons-child + winButton;
- * S folds aria/title per action (B1/B2 separate); P folds nth-child +
- * :not(:where(...)) zero-spec S-mirror guards; I folds svg/img/span;
- * G mirrors S + :hover::after. Standalone Obsidian blocks live in the
- * section 6 adapter. */
+/* TH lights */
 
 :root {
   --th-traffic-size: 14px;
@@ -24,17 +17,12 @@
   );
 }
 
-/* 1. Native macOS lights: leave alone. */
-:is(.traffic-lights, .mac-traffic-lights, .macos-traffic-lights, .titlebar-traffic-lights) {
-  visibility: visible !important;
-}
-
-/* 2a. Drag roots (0,1,0): titlebar drags, lamps opt out below. */
+/* 2a */
 :is(.titlebar, .title-bar, [class*="titlebar" i], [class*="title-bar" i], [data-testid*="titlebar" i], [data-testid*="title-bar" i]) {
   -webkit-app-region: drag !important;
 }
 
-/* C containers: exact names dropped (substring-covered); identical decls only. */
+/* C */
 :is(.window-control, [class*="window-controls" i], [class*="windowControls" i]) {
   position: absolute !important;
   left: calc(var(--th-traffic-left) - var(--th-traffic-inset, 5px)) !important;
@@ -53,18 +41,18 @@
   z-index: 9999 !important;
 }
 
-/* VSCode order (0,2,0): pin right-anchored cluster left. */
+/* VSCode order */
 :is(.titlebar > .window-controls-container, .titlebar > .window-controls, .vscode-titlebar > .window-controls-container) {
   order: -1 !important;
   flex: 0 0 auto !important;
 }
 
-/* 2b. App-specific coverage (unknown DOM never matches). */
-/* D no-drag (0,1,0): both Discord roots opt out. */
+/* 2b */
+/* D no-drag */
 :is([class*="winButtons" i], [class*="winButton" i]) {
   -webkit-app-region: no-drag !important;
 }
-/* D container (0,1,1) stays alone. */
+/* D container */
 div[class*="winButtons" i] {
   position: absolute !important;
   left: calc(var(--th-traffic-left) - var(--th-traffic-inset, 5px)) !important;
@@ -77,7 +65,7 @@ div[class*="winButtons" i] {
   background: transparent !important;
 }
 
-/* Slack drag root + controls (p-titlebar subset of titlebar__controls). */
+/* Slack */
 [class*="p-titlebar" i] {
   -webkit-app-region: drag !important;
 }
@@ -91,7 +79,7 @@ div[class*="winButtons" i] {
   -webkit-app-region: no-drag !important;
 }
 
-/* Generic frameless controls (exact matches only). */
+/* Frameless */
 :is(.caption-buttons, .captionButtons, .frameless-controls, .header-controls) {
   position: absolute !important;
   left: calc(var(--th-traffic-left) - var(--th-traffic-inset, 5px)) !important;
@@ -102,7 +90,7 @@ div[class*="winButtons" i] {
   -webkit-app-region: no-drag !important;
 }
 
-/* 3. Hit cell (B1/B2/D/O tiers): 24px transparent rect, 14px lamp via ::before. */
+/* 3. Hit cell */
 :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) button,
 :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) [role="button"],
 :is([class*="winButtons" i] > *, [class*="winButton" i]),
@@ -134,7 +122,7 @@ div[class*="winButtons" i] {
   --th-traffic-lamp-stroke: rgb(0 0 0 / 12%) !important;
 }
 
-/* Lamp ::before: same tiers; S/P rules only set lamp vars, never the box. */
+/* Lamp ::before */
 :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) button::before,
 :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) [role="button"]::before,
 :is([class*="winButtons" i] > *, [class*="winButton" i])::before,
@@ -155,7 +143,7 @@ div[class*="winButtons" i] {
   display: block !important;
 }
 
-/* I icons: hide glyphs, keep layout; never hide buttons. */
+/* I icons */
 :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) button :is(svg, img, span),
 :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) [role="button"] :is(svg, img, span),
 :is([class*="window-controls" i], [class*="windowControls" i], [class*="winButtons" i], [class*="titlebar__controls" i]) svg,
@@ -166,8 +154,7 @@ div[class*="winButtons" i] {
   display: none !important;
 }
 
-/* S colors: generic C folds aria/title per action in B1 button + B2 role
- * (Close B1 adds data-action/class, Min/Max B1 add class); vars + order only. */
+/* S colors */
 :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) button:is([aria-label*="Close" i], [title*="Close" i], [data-action*="close" i], [class*="close" i]),
 :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) [role="button"]:is([aria-label*="Close" i], [title*="Close" i]),
 :is([class*="winButton" i][aria-label*="Close" i], [class*="winButtons" i] > *[aria-label*="Close" i]),
@@ -193,11 +180,7 @@ div[class*="winButtons" i] {
   order: 3 !important;
 }
 
-/* P reorder: Windows [min,max,close] -> macOS [close,min,max]; generic plus
- * the Obsidian twin. Generic keeps :not(Close) + :not(:where(...)) mirroring
- * S compounds; the Obsidian twin keeps its Close guards + own guard. Guards
- * are zero-specificity so tiers stay unchanged; guarded (semantic) elements
- * fall through to S colors. */
+/* P reorder */
 :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) > :nth-child(1):not([aria-label*="Close" i]):not(:where(:is(button,[role="button"]):is([aria-label*="Close"i],[aria-label*="Minimiz"i],[aria-label*="Maximiz"i],[aria-label*="Restor"i],[title*="Close"i],[title*="Minimiz"i],[title*="Maximiz"i],[title*="Restor"i]),button:is([data-action*="close"i],[class*="close"i],[class*="minimiz"i],[class*="maximiz"i]))),
 .titlebar-button-container.mod-right > :nth-child(1):not([aria-label*="Close" i]):not([aria-label*="关闭" i]):not(.mod-close):not(:where(.mod-close, .mod-minimize, .mod-maximize, [aria-label*="Close" i], [aria-label*="关闭" i], [aria-label*="Minimiz" i], [aria-label*="最小化" i], [aria-label*="Maximiz" i], [aria-label*="Restor" i], [aria-label*="最大化" i], [aria-label*="还原" i], [aria-label*="向下还原" i], [title*="Close" i], [title*="关闭" i], [title*="Minimiz" i], [title*="最小化" i], [title*="Maximiz" i], [title*="Restor" i], [title*="最大化" i], [title*="还原" i], [title*="向下还原" i])) {
   order: 2 !important;
@@ -211,8 +194,7 @@ div[class*="winButtons" i] {
   order: 1 !important;
 }
 
-/* P paints (last resort): same S-mirroring guards, so a semantic child never
- * takes the positional lamp; set lamp vars, never the hit box. */
+/* P paints */
 :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) > :nth-child(3):last-child:not(:where(:is(button,[role="button"]):is([aria-label*="Close"i],[aria-label*="Minimiz"i],[aria-label*="Maximiz"i],[aria-label*="Restor"i],[title*="Close"i],[title*="Minimiz"i],[title*="Maximiz"i],[title*="Restor"i]),button:is([data-action*="close"i],[class*="close"i],[class*="minimiz"i],[class*="maximiz"i]))),
 .titlebar-button-container.mod-right > :nth-child(3):last-child:not(:where(.mod-close, .mod-minimize, .mod-maximize, [aria-label*="Close" i], [aria-label*="关闭" i], [aria-label*="Minimiz" i], [aria-label*="最小化" i], [aria-label*="Maximiz" i], [aria-label*="Restor" i], [aria-label*="最大化" i], [aria-label*="还原" i], [aria-label*="向下还原" i], [title*="Close" i], [title*="关闭" i], [title*="Minimiz" i], [title*="最小化" i], [title*="Maximiz" i], [title*="Restor" i], [title*="最大化" i], [title*="还原" i], [title*="向下还原" i])) {
   --th-traffic-lamp-fill: #ff5f57 !important;
@@ -229,7 +211,7 @@ div[class*="winButtons" i] {
   --th-traffic-lamp-stroke: #1dad2b !important;
 }
 
-/* 4. Glyph ::after base (decorative, click-through, on-lamp). */
+/* 4. Glyph base */
 :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) button::after,
 :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) [role="button"]::after,
 :is([class*="winButtons" i] > *, [class*="winButton" i])::after,
@@ -253,7 +235,7 @@ div[class*="winButtons" i] {
 .titlebar-button-container.mod-right .titlebar-button:hover::after {
   opacity: 1 !important;
 }
-/* G glyphs mirror S; order specials stay expanded. */
+/* G glyphs */
 .window-controls button[style*="order: 1"]::after,
 .window-controls button[order="1"]::after,
 :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) button:is([aria-label*="Close" i], [title*="Close" i], [data-action*="close" i], [class*="close" i]):hover::after,
@@ -282,7 +264,7 @@ div[class*="winButtons" i] {
   filter: brightness(0.85) !important;
 }
 
-/* 5. Dark/light shadows on ::before; focus outline wraps lamp. */
+/* 5. Shadows + focus */
 @media (prefers-color-scheme: dark) {
   :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) button::before,
   :is(.window-control, [class*="window-controls" i], [class*="windowControls" i], [class*="titlebar__controls" i], .caption-buttons, .captionButtons, .frameless-controls, .header-controls) [role="button"]::before,
@@ -328,9 +310,7 @@ div[class*="winButtons" i] {
   }
 }
 
-/* 6. Obsidian adapter (verified 1.13.7 hidden-frameless): moved cluster +
- * title/tab reserve + frame-space avoidance. Shared tiers above stay
- * combined; reserve never uses a broad [class*=title]. Explicit classes only. */
+/* 6. Obsidian adapter */
 .titlebar-button-container.mod-right {
   position: fixed !important;
   left: calc(var(--th-traffic-left) - var(--th-traffic-inset, 5px)) !important;
@@ -357,12 +337,12 @@ div[class*="winButtons" i] {
   z-index: 9999 !important;
 }
 
-/* Titles/tabs clear the lights. */
+/* Titles reserve */
 .titlebar :is(.window-title, .title-label) {
   padding-left: var(--th-traffic-reserved) !important;
 }
 
-/* Left-reserve: shift left titlebar items right (scoped). */
+/* Left reserve */
 .titlebar {
   padding-left: var(--th-traffic-reserved) !important;
 }
@@ -378,9 +358,23 @@ div[class*="winButtons" i] {
   margin-left: var(--th-traffic-reserved) !important;
 }
 
-/* Frame-space (hidden-frameless Win/Linux): native avoidance
- * via --frame-*-space; macOS untouched. */
+/* Frame-space */
 body.is-hidden-frameless:is(.mod-windows, .mod-linux) {
   --frame-left-space: var(--th-traffic-reserved, 76px) !important;
   --frame-right-space: 0px !important;
+}
+
+/* In-container first child;过渡：宿主getTitlebar上线后由结论驱动. */
+.titlebar .titlebar-button-container.mod-right {
+  position: static !important;
+  order: -1 !important;
+  align-self: center !important;
+}
+
+/* 7. Typora reserved */
+:root {
+  --th-typora-titlebar-height: 30px;
+}
+#w-unpin {
+  display: none !important;
 }

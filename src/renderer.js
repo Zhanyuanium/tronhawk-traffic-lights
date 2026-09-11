@@ -21,6 +21,7 @@
  * @typedef {import("@tronhawk/sdk").RendererContext} RendererContext
  * @typedef {RendererContext & { windowControls?: unknown }} RendererContextWithOverlay
  * @typedef {{ mount(): Promise<void>, unmount(): Promise<void> }} HostWindowControls
+ * @typedef {{ found: boolean, queryFailed: boolean, selector: string }} ControlsResolution
  */
 
 /** Decorative fallback CSS id (single `html::before`, not clickable). Null when absent. @type {string | null} */
@@ -45,7 +46,6 @@ const WINDOW_CONTROL_SELECTOR =
   '[class*="winButtons" i],' +
   '[class*="p-titlebar__controls" i],[class*="titlebar__controls" i],' +
   ".caption-buttons,.captionButtons,.frameless-controls,.header-controls," +
-  ".traffic-lights,.mac-traffic-lights,.macos-traffic-lights,.titlebar-traffic-lights," +
   ".titlebar-button-container.mod-right";
 
 /**
@@ -82,6 +82,28 @@ function getWindowControls(ctx) {
     return null;
   }
   return /** @type {HostWindowControls} */ (candidate);
+}
+
+/**
+ * Transitional seam wrapping the single `ctx.dom.query(WINDOW_CONTROL_SELECTOR)`
+ * call. Shape aligns with future host `getWindowControls` (found/queryFailed/
+ * selector); after host rollout, only replace this function's implementation.
+ * Pure refactor, zero behavior change.
+ * @param {RendererContext} ctx
+ * @returns {Promise<ControlsResolution>}
+ */
+async function resolveControls(ctx) {
+  try {
+    const found = await ctx.dom.query(WINDOW_CONTROL_SELECTOR);
+    if (found !== null) {
+      ctx.logger.info("[traffic-lights] window controls found");
+      return { found: true, queryFailed: false, selector: WINDOW_CONTROL_SELECTOR };
+    }
+    return { found: false, queryFailed: false, selector: WINDOW_CONTROL_SELECTOR };
+  } catch (_e) {
+    ctx.logger.warn("[traffic-lights] controls query failed");
+    return { found: false, queryFailed: true, selector: WINDOW_CONTROL_SELECTOR };
+  }
 }
 
 /**
@@ -189,18 +211,9 @@ async function activate(ctx) {
     overlayEnabled = false;
   }
 
-  let controlsFound = false;
-  let queryFailed = false;
-  try {
-    const found = await ctx.dom.query(WINDOW_CONTROL_SELECTOR);
-    if (found !== null) {
-      controlsFound = true;
-      ctx.logger.info("[traffic-lights] window controls found");
-    }
-  } catch (_e) {
-    queryFailed = true;
-    ctx.logger.warn("[traffic-lights] controls query failed");
-  }
+  const resolution = await resolveControls(ctx);
+  const controlsFound = resolution.found;
+  const queryFailed = resolution.queryFailed;
 
   if (controlsFound) {
     await unmountOverlay(ctx);

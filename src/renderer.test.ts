@@ -264,11 +264,19 @@ describe("decorative fallback behavior", () => {
         ".captionButtons",
         ".frameless-controls",
         ".header-controls",
+        ".titlebar-button-container.mod-right",
+      ]) {
+        expect(selector).toContain(token);
+      }
+      // D8: native macOS lights never suppress the overlay (per-app toggle).
+      for (const token of [
         ".traffic-lights",
-      ".titlebar-button-container.mod-right",
-    ]) {
-      expect(selector).toContain(token);
-    }
+        ".mac-traffic-lights",
+        ".macos-traffic-lights",
+        ".titlebar-traffic-lights",
+      ]) {
+        expect(selector).not.toContain(token);
+      }
       // Closed detection: only the precise Obsidian container moves, never
       // bare buttons; Discord moves div[winButtons] only, never a bare
       // singular winButton outside it (CSS D tier still repaints the
