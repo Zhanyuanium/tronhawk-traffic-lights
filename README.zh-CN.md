@@ -84,6 +84,8 @@ cargo run -p tronhawk-package --bin tronhawk-pack -- pack <path-to-plugin> traff
 
 ## 统一样式
 
+单一灯皮（D1）：d=14、pitch 24、格 24×24、内距 5、gap 10、悬停 ×/–/+ 字形、`#0a84ff` focus 轮廓——无其它灯皮。
+
 两条路径共用同一套视觉语言——14px 矢量灯（DIP/CSS px；DPR=2 时 28 物理像素）、
 pitch 24（gap 10、24×24 格、内距 5）、悬停 ×/–/+ 矢量字形（14 网格、居中、
 仅悬停显示、aria-hidden）、`#0a84ff` focus 轮廓：宿主 overlay（72×H 视图、
@@ -184,7 +186,8 @@ CSS 变量（`size` = 灯直径、`gap` = 相邻灯视觉边缘间距、`left`/`
   `deactivate` 永远先断 observer，再 unmount overlay，再清装饰
   CSS，各步互不跳过、永不 reject。如需跳过 overlay 直走装饰档，请将
   `host-overlay-fallback` 设为 `false`。
-- 若应用本身已渲染原生 macOS 红绿灯，插件会主动避让，避免重复渲染。
+- 灯进容器策略：已在标题栏容器内的簇优先走容器内首子（`.titlebar .titlebar-button-container.mod-right`，`position: static` + `order: -1` + `align-self: center`，位于 fixed 规则之后覆盖）。过渡态：宿主 `getTitlebar` 上线后由结论驱动。
+- Typora（预留）：`w-min`/`w-max`/`w-restore`/`w-close` 映射红黄绿，`w-unpin` 默认隐藏；在真机检出真实控件前不做其它隐藏。
 - 标题栏保持 `-webkit-app-region: drag`，按钮使用 `no-drag` 以保证可点击；
   hover 显示 `×/–/+` 字形；保留 `focus-visible` 无障碍轮廓；已做
   浅色/深色适配。

@@ -93,6 +93,8 @@ Then load `traffic-lights.thx` in the TronHawk Manager.
 
 ## Unified styling
 
+Single lamp skin (D1): d=14, pitch 24, cell 24x24, inset 5, gap 10, hover ×/–/+ glyphs, `#0a84ff` focus outline — no alternate skins.
+
 Both paths share one visual language — 14px vector lights (DIP/CSS px; 28 physical
 at DPR=2), pitch 24 (gap 10, 24x24 cells, inset 5), hover ×/–/+ vector glyphs
 (14-grid, centered, hover-only, aria-hidden), `#0a84ff` focus outline: the host
@@ -214,8 +216,8 @@ lamp anchor; hit cells stay adjacent with container gap 0):
   CSS — each step independent, never rejecting. Set
   `host-overlay-fallback` to `false` to skip the overlay and go
   straight to the decorative tier.
-- If the app already renders native macOS traffic lights, the plugin leaves
-  them alone to avoid duplicates.
+- In-container strategy: a cluster already inside the titlebar container prefers the in-container first child (`.titlebar .titlebar-button-container.mod-right` with `position: static`, `order: -1`, `align-self: center`, after the fixed rule). Transition: driven by the conclusion after the host `getTitlebar` API goes live.
+- Typora (reserved): `w-min`/`w-max`/`w-restore`/`w-close` map red/yellow/green, `w-unpin` hidden by default; no other hiding until real controls are verified on device.
 - Titlebar keeps `-webkit-app-region: drag`; buttons use `no-drag` so they
   stay clickable. Hover shows `×/–/+` glyphs; `focus-visible` keeps an
   accessible outline; light/dark schemes are adapted.
